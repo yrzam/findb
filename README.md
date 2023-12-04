@@ -1,14 +1,14 @@
-# FinDB - my financial data model & tools
+# FinDB - personal financial data model & tools
 
 
 ## About
 
-This repository contains the SQLite schema and scripts to handle personal financial data. It takes a generic approach to assets, transactions, balances and other things providing heavy automation capabilities, extensibility & deep analysis opportunities.
+This repository contains the SQLite schema and scripts to handle financial data. It takes a generic approach to assets, transactions, balances and other things providing heavy automation capabilities, extensibility & deep analysis opportunities.
 
 
 ### Why SQLite but not spreadsheets?
 
-* **Schema**. Spreadsheets are terrible. They're made for structured data although it is nearly impossible to structure data in them. A spreadsheet is literally a set of cells with their own rules, no decent data validation mechanisms, no relations, and schema is stored entirely in the user's mind.
+* **Schema**. Spreadsheets are terrible. They're made for structured data although it is nearly impossible to structure data in them. A spreadsheet is literally a set of cells with their own rules, no decent data validation mechanisms, no entity relationship, and schema is stored entirely in the user's mind.
 
 * **Interface.** You can easily render graphs on HTML pages. "DB Browser for SQLite" can be used to edit data. SQL is very convenient for analytical/bulk update purposes, for scripting such as automatic data import. Queries & DDL have great readability. And you may find other ways to interact with the database.
 
@@ -146,7 +146,7 @@ result_transaction_id - if saving resulted in the transaction, that transaction 
 Cancelled goals should be deleted.
 
 
-## current_balance_goals (view)
+### current_balance_goals (view)
 
 View that shows statuses of all goals (amount left, whether goal is accomplished, etc.). 
 
@@ -183,7 +183,7 @@ This table is not historical.
 Shows current asset allocation calculated based on your balance and exchange rates. Both current and target shares are displayed.
 
 
-### historic_monthly_balances (view)
+### historical_monthly_balances (view)
 
 Shows monthly balance with source, calculates deltas - total and grouped by asset type.
 
