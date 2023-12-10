@@ -365,94 +365,6 @@ order by
 	is_accomplished asc,
 	t.priority desc
 /* current_balance_goals(is_accomplished,goal,storage,amount_total,amount_left,deadline) */;
-CREATE TABLE IF NOT EXISTS "fin_transaction_categories" (
-	"id"	INTEGER NOT NULL,
-	"name"	TEXT NOT NULL UNIQUE,
-	"is_rebalance"	INTEGER NOT NULL DEFAULT 0,
-	"is_passive"	INTEGER NOT NULL DEFAULT 0,
-	PRIMARY KEY("id")
-);
-CREATE VIEW historical_monthly_balances as
-with recursive dates(mo_start_date, date) as (
-		values(
-			date('now', 'start of month'),
-			date('now', 'start of month', '+1 month', '-1 day')
-		)
-	union all
-		select
-			date(mo_start_date, '-1 month'),
-			date(mo_start_date, '-1 day')
-		from
-			dates
-		where
-			mo_start_date > (select min(date) from balances)
-		limit 10*12 -- use yearly view for periods over 10 years
-),
-constants as(
-	select
-		(select code from fin_assets fa2 where fa2.is_base=1 limit 1) as base_asset
-),
-
-data_by_type as materialized( -- force materialize - 2x faster due to lead()
-select
-	d.date,
-	fat.id as asset_type_id,
-	(
-		select
-			sum(
-				(select b.amount from balances b where b.asset_storage_id=fas.id and b.date<=d.date order by b.date desc limit 1)*
-				(select far.rate from fin_asset_rates far where far.asset_id=fas.asset_id and far.date<=d.date order by far.date desc limit 1)
-			)
-		from
-			fin_assets fa
-			join fin_assets_storages fas on fas.asset_id=fa.id
-		where
-			fa.type_id=fat.id 
-	) as base_balance,
-	(
-		select
-			coalesce(sum(
-				(select sum(ft.amount) from fin_transactions ft join fin_transaction_categories ftc on ftc.id=ft.category_id where ft.asset_storage_id=fas.id and ft.date>=d.mo_start_date and ft.date<=d.date and ftc.is_rebalance=0 and ftc.is_passive=0)*
-				(select far.rate from fin_asset_rates far where far.asset_id=fas.asset_id and far.date<=d.date order by far.date desc limit 1)
-			),0)
-		from
-			fin_assets fa
-			join fin_assets_storages fas on fas.asset_id=fa.id
-		where
-			fa.type_id=fat.id
-	) as base_active_delta
-from
-	dates d
-	cross join fin_asset_types fat
-)
-
-select
-	t.date,
-	round(sum(t.base_balance),2) as base_balance,
-	round(sum(t.base_balance_delta),2) as base_balance_delta,
-	round(sum(t.base_active_delta),2) as base_active_delta,
-	round(sum(t.base_balance_delta)-sum(t.base_active_delta),2) as base_passive_delta,
-	(select base_asset from constants) as base_asset,
-	group_concat(fat.name||'='||cast(t.base_balance as integer) || ' ' || (select base_asset from constants), ' ') as base_balance_by_type,
-	group_concat(fat.name||'='||cast(t.base_balance_delta as integer) || ' ' || (select base_asset from constants), ' ') as base_balance_delta_by_type,
-	group_concat(fat.name||'='||cast(t.base_active_delta as integer) || ' ' || (select base_asset from constants), ' ') as base_active_delta_by_type,
-	group_concat(fat.name||'='||cast(t.base_balance_delta-t.base_active_delta as integer) || ' ' || (select base_asset from constants), ' ') as base_passive_delta_by_type
-from 
-	(
-		select
-			t.*,
-			t.base_balance-lead(t.base_balance) over(partition by t.asset_type_id order by date desc) as base_balance_delta
-		from
-			data_by_type t
-		where 
-			t.base_balance is not null
-	) t
-	join fin_asset_types fat on fat.id=t.asset_type_id
-group by
-	1
-order by
-	t.date desc
-/* historical_monthly_balances(date,base_balance,base_balance_delta,base_active_delta,base_passive_delta,base_asset,base_balance_by_type,base_balance_delta_by_type,base_active_delta_by_type,base_passive_delta_by_type) */;
 CREATE VIEW historical_monthly_txs_balances_mismatch as
 with recursive dates(mo_start_date, date) as (
 		values(
@@ -505,3 +417,104 @@ where
 order by
 	t.date desc
 /* historical_monthly_txs_balances_mismatch(start_date,end_date,storage,amount_unaccounted,asset,tx_delta,balance_delta) */;
+CREATE TABLE IF NOT EXISTS "fin_transaction_categories" (
+	"id"	INTEGER NOT NULL,
+	"name"	TEXT NOT NULL UNIQUE,
+	"is_rebalance"	INTEGER NOT NULL DEFAULT 0,
+	"is_passive"	INTEGER NOT NULL DEFAULT 0,
+	"is_initial_import"	INTEGER NOT NULL DEFAULT 0,
+	PRIMARY KEY("id")
+);
+CREATE VIEW historical_monthly_balances as
+with recursive dates(mo_start_date, date) as (
+		values(
+			date('now', 'start of month'),
+			date('now', 'start of month', '+1 month', '-1 day')
+		)
+	union all
+		select
+			date(mo_start_date, '-1 month'),
+			date(mo_start_date, '-1 day')
+		from
+			dates
+		where
+			mo_start_date > (select min(date) from balances)
+		limit 10*12 -- use yearly view for periods over 10 years
+),
+constants as(
+	select
+		(select code from fin_assets fa2 where fa2.is_base=1 limit 1) as base_asset
+),
+
+data_by_type as materialized( -- force materialize - 2x faster due to lead()
+select
+	d.date,
+	fat.id as asset_type_id,
+	(
+		select
+			sum(
+				(select b.amount from balances b where b.asset_storage_id=fas.id and b.date<=d.date order by b.date desc limit 1)*
+				(select far.rate from fin_asset_rates far where far.asset_id=fas.asset_id and far.date<=d.date order by far.date desc limit 1)
+			)
+		from
+			fin_assets fa
+			join fin_assets_storages fas on fas.asset_id=fa.id
+		where
+			fa.type_id=fat.id 
+	) as base_balance,
+	(
+		select
+			coalesce(sum(
+				(select sum(ft.amount) from fin_transactions ft join fin_transaction_categories ftc on ftc.id=ft.category_id where ft.asset_storage_id=fas.id and ft.date>=d.mo_start_date and ft.date<=d.date and ftc.is_rebalance=0 and ftc.is_passive=0 and ftc.is_initial_import=0)*
+				(select far.rate from fin_asset_rates far where far.asset_id=fas.asset_id and far.date<=d.date order by far.date desc limit 1)
+			),0)
+		from
+			fin_assets fa
+			join fin_assets_storages fas on fas.asset_id=fa.id
+		where
+			fa.type_id=fat.id
+	) as base_active_delta,
+	(
+		select
+			coalesce(sum(
+				(select sum(ft.amount) from fin_transactions ft join fin_transaction_categories ftc on ftc.id=ft.category_id where ft.asset_storage_id=fas.id and ft.date>=d.mo_start_date and ft.date<=d.date and ftc.is_initial_import=1)*
+				(select far.rate from fin_asset_rates far where far.asset_id=fas.asset_id and far.date<=d.date order by far.date desc limit 1)
+			),0)
+		from
+			fin_assets fa
+			join fin_assets_storages fas on fas.asset_id=fa.id
+		where
+			fa.type_id=fat.id
+	) as base_excluded_delta
+from
+	dates d
+	cross join fin_asset_types fat
+)
+
+select
+	t.date,
+	round(sum(t.base_balance),2) as base_balance,
+	round(sum(t.base_balance_delta),2) as base_balance_delta,
+	round(sum(t.base_active_delta),2) as base_active_delta,
+	round(sum(t.base_balance_delta)-sum(t.base_active_delta)-sum(t.base_excluded_delta),2) as base_passive_delta,
+	(select base_asset from constants) as base_asset,
+	group_concat(fat.name||'='||cast(t.base_balance as integer) || ' ' || (select base_asset from constants), ' ') as base_balance_by_type,
+	group_concat(fat.name||'='||cast(t.base_balance_delta as integer) || ' ' || (select base_asset from constants), ' ') as base_balance_delta_by_type,
+	group_concat(fat.name||'='||cast(t.base_active_delta as integer) || ' ' || (select base_asset from constants), ' ') as base_active_delta_by_type,
+	group_concat(fat.name||'='||cast(t.base_balance_delta-t.base_active_delta-t.base_excluded_delta as integer) || ' ' || (select base_asset from constants), ' ') as base_passive_delta_by_type
+from 
+	(
+		select
+			t.*,
+			t.base_balance-lead(t.base_balance) over(partition by t.asset_type_id order by date desc) as base_balance_delta
+		from
+			data_by_type t
+		where 
+			t.base_balance is not null
+	) t
+	join fin_asset_types fat on fat.id=t.asset_type_id
+group by
+	1
+order by
+	t.date desc
+/* historical_monthly_balances(date,base_balance,base_balance_delta,base_active_delta,base_passive_delta,base_asset,base_balance_by_type,base_balance_delta_by_type,base_active_delta_by_type,base_passive_delta_by_type) */;

@@ -94,7 +94,7 @@ reason_phys_asset_id - (optional) physical asset, due to which transaction has o
 ...
 ```
 
-**Transactions should be up-to-date on the last day of each month, as they are matched with balances. Transactions can be grouped into large blocks that are consistent with the overall balance delta.**
+**Transactions should be up-to-date on the last day of each month, as they are matched with balances. For the initial data import, please create pseudo transactions of a category that has a flag `is_initial_import`. Transactions can be grouped into large blocks that are consistent with the overall balance delta.**
 
 
 ### fin_transaction_categories (table)
@@ -104,6 +104,7 @@ A **transaction category** describes the logical sense of the transaction.
 ```
 is_rebalance - whether the transaction is a part of self-transfer / exchange
 is_passive - whether the income or expense is passive (see definition below)
+is_initial_import - whether the transaction is an upload of the existing assets for accounting (thus it is neither active nor passive income/expense)
 ...
 ```
 
