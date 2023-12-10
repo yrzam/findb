@@ -183,18 +183,25 @@ This table is not historical.
 Shows current asset allocation calculated based on your balance and exchange rates. Both current and target shares are displayed.
 
 
+### historical_monthly_txs_balances_mismatch (view)
+
+Allows to keep balances consistent with transactions for the analytical purposes.
+
+This view contains a row only if there is a mismatch between transaction delta and balance delta during the last 2 years. It is advised to keep this view empty via adding missing transactions or adjusting balances on a monthly basis.
+
+
 ### historical_monthly_balances (view)
 
 Shows monthly balance with source, calculates deltas - total and grouped by asset type.
 
-Data is calculated over 10 years with a period of 1 month for the last day of that month.
+Data is calculated over the last 10 years with a period of 1 month for the last day of that month.
 
 ```
 base_balance - total balance, converted to the base asset
 base_balance_delta - balance change since the previous month
 base_active_delta - delta (gains - losses) for all transactions that are not passive income/expenses and occurred during this month
 base_passive_delta - balance change caused by exchange rate fluctuations, passive income/expenses, non-specified transactions
-*_by_type - same data but per asset type
+*_by_type - same data but per asset type, represented as a concatenated string
 ...
 ``` 
 
