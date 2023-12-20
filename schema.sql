@@ -92,27 +92,6 @@ from
 where
 	fa.is_active=1
 /* current_fin_asset_rates(pseudo_id,asset_type,asset,rate,base_asset) */;
-CREATE TRIGGER current_fin_asset_rates_update
-instead of update of rate on current_fin_asset_rates
-begin
-	insert into fin_asset_rates (asset_id, date, rate)
-	values(
-		(
-			select
-				fa.id
-			from 
-				fin_assets fa
-				join fin_asset_types fat on fat.id=fa.type_id
-			where
-				fa.code=new.asset and
-				fat.name=new.asset_type
-		),
-		date('now'),
-		new.rate
-	)
-	on conflict(asset_id,date) do update 
-	set rate=new.rate;
-end;
 CREATE VIEW current_fin_allocation as 
 select 
 	t.name as "group",
@@ -205,65 +184,6 @@ from (
 where 
 	t.balance is not null
 /* current_balances(pseudo_id,asset_type,asset_name,storage,balance,asset_code,base_balance,base_asset) */;
-CREATE TRIGGER current_balances_insert
-instead of insert on current_balances
-begin
-
-	insert into fin_assets_storages(asset_id, storage_id)
-	values(
-		(select fa.id from fin_assets fa join fin_asset_types fat on fat.id=fa.type_id where fa.code=new.asset_code and fat.name=new.asset_type),
-		(select id from fin_storages where name=new.storage)
-	)
-	on conflict do nothing;
-	
-	insert into balances(asset_storage_id, date, amount)
-	values(
-		(
-			select
-				fas.id
-			from
-				fin_assets_storages fas
-				join fin_assets fa on fa.id=fas.asset_id
-				join fin_asset_types fat on fat.id=fa.type_id
-				join fin_storages fs on fs.id=fas.storage_id
-			where
-				fa.code = new.asset_code and
-				fat.name = new.asset_type and
-				fs.name = new.storage
-		),
-		date('now'),
-		new.balance
-	)
-	on conflict(asset_storage_id, date) do update
-	set 
-		amount = new.balance;
-		
-end;
-CREATE TRIGGER current_balances_update
-instead of update of balance on current_balances
-begin
-	insert into balances(asset_storage_id, date, amount)
-	values(
-		(
-			select
-				fas.id
-			from
-				fin_assets_storages fas
-				join fin_assets fa on fa.id=fas.asset_id
-				join fin_asset_types fat on fat.id=fa.type_id
-				join fin_storages fs on fs.id=fas.storage_id
-			where
-				fa.code = new.asset_code and
-				fat.name = new.asset_type and
-				fs.name = new.storage
-		),
-		date('now'),
-		new.balance
-	)
-	on conflict(asset_storage_id, date) do update
-	set 
-		amount = new.balance;
-end;
 CREATE TABLE IF NOT EXISTS "fin_transactions" (
 	"id"	INTEGER NOT NULL,
 	"date"	NUMERIC NOT NULL,
@@ -518,3 +438,323 @@ group by
 order by
 	t.date desc
 /* historical_monthly_balances(date,base_balance,base_balance_delta,base_active_delta,base_passive_delta,base_asset,base_balance_by_type,base_balance_delta_by_type,base_active_delta_by_type,base_passive_delta_by_type) */;
+CREATE INDEX "i_fin_transactions_date" ON "fin_transactions" (
+	"date"	DESC
+);
+CREATE TRIGGER current_fin_asset_rates_insert
+instead of insert on current_fin_asset_rates
+begin
+	insert into fin_asset_rates (asset_id, date, rate)
+	values(
+		(
+			select
+				fa.id
+			from 
+				fin_assets fa
+				join fin_asset_types fat on fat.id=fa.type_id
+			where
+				fa.code=new.asset and
+				fat.name=new.asset_type
+		),
+		date('now'),
+		new.rate
+	)
+	on conflict(asset_id,date) do update 
+	set rate=new.rate;
+end;
+CREATE TRIGGER current_balances_insert
+instead of insert on current_balances
+begin
+
+	insert into fin_assets_storages(asset_id, storage_id)
+	values(
+		(select fa.id from fin_assets fa join fin_asset_types fat on fat.id=fa.type_id where fa.code=new.asset_code and fat.name=new.asset_type),
+		(select id from fin_storages where name=new.storage)
+	)
+	on conflict do nothing;
+	
+	insert into balances(asset_storage_id, date, amount)
+	values(
+		(
+			select
+				fas.id
+			from
+				fin_assets_storages fas
+				join fin_assets fa on fa.id=fas.asset_id
+				join fin_asset_types fat on fat.id=fa.type_id
+				join fin_storages fs on fs.id=fas.storage_id
+			where
+				fa.code = new.asset_code and
+				fat.name = new.asset_type and
+				fs.name = new.storage
+		),
+		date('now'),
+		new.balance
+	)
+	on conflict(asset_storage_id, date) do update
+	set 
+		amount = new.balance;
+		
+end;
+CREATE TRIGGER current_balances_update
+instead of update of balance on current_balances
+begin
+
+	insert into fin_assets_storages(asset_id, storage_id)
+	values(
+		(select fa.id from fin_assets fa join fin_asset_types fat on fat.id=fa.type_id where fa.code=new.asset_code and fat.name=new.asset_type),
+		(select id from fin_storages where name=new.storage)
+	)
+	on conflict do nothing;
+	
+	insert into balances(asset_storage_id, date, amount)
+	values(
+		(
+			select
+				fas.id
+			from
+				fin_assets_storages fas
+				join fin_assets fa on fa.id=fas.asset_id
+				join fin_asset_types fat on fat.id=fa.type_id
+				join fin_storages fs on fs.id=fas.storage_id
+			where
+				fa.code = new.asset_code and
+				fat.name = new.asset_type and
+				fs.name = new.storage
+		),
+		date('now'),
+		new.balance
+	)
+	on conflict(asset_storage_id, date) do update
+	set 
+		amount = new.balance;
+		
+end;
+CREATE TRIGGER current_fin_asset_rates_update
+instead of update of rate on current_fin_asset_rates
+begin
+	insert into fin_asset_rates (asset_id, date, rate)
+	values(
+		(
+			select
+				fa.id
+			from 
+				fin_assets fa
+				join fin_asset_types fat on fat.id=fa.type_id
+			where
+				fa.code=new.asset and
+				fat.name=new.asset_type
+		),
+		date('now'),
+		new.rate
+	)
+	on conflict(asset_id,date) do update 
+	set rate=new.rate;
+end;
+CREATE VIEW latest_fin_transactions as
+select
+	ft.id as pseudo_id,
+	ft.date,
+	fat.name as asset_type,
+	coalesce(fa.name, fa.code) as asset_name,
+	fs.name as storage,
+	ft.amount,
+	fa.code as asset_code,
+	ftc.name as category,
+	r_pa.name as reason_phys_asset,
+	r_fat.name as reason_fin_asset_type,
+	r_fa.code as reason_fin_asset_code,
+	r_fs.name as reason_fin_asset_storage,
+	cast(null as int) as adjust_balance
+from
+	fin_transactions ft
+	join fin_transaction_categories ftc on ftc.id=ft.category_id
+	join fin_assets_storages fas on fas.id=ft.asset_storage_id
+	join fin_assets fa on fa.id=fas.asset_id
+	join fin_asset_types fat on fat.id=fa.type_id
+	join fin_storages fs on fs.id=fas.storage_id
+	
+	left join phys_assets r_pa on r_pa.id=ft.reason_phys_asset_id
+	left join fin_assets_storages r_fas on r_fas.id=ft.reason_fin_asset_storage_id
+	left join fin_assets r_fa on r_fa.id=r_fas.asset_id
+	left join fin_asset_types r_fat on r_fat.id=r_fa.type_id
+	left join fin_storages r_fs on r_fs.id=r_fas.storage_id
+order by
+	ft.date desc
+/* latest_fin_transactions(pseudo_id,date,asset_type,asset_name,storage,amount,asset_code,category,reason_phys_asset,reason_fin_asset_type,reason_fin_asset_code,reason_fin_asset_storage,adjust_balance) */;
+CREATE TRIGGER latest_fin_transactions_insert
+instead of insert on latest_fin_transactions
+begin
+
+	insert into fin_assets_storages(asset_id, storage_id)
+	values(
+		(select fa.id from fin_assets fa join fin_asset_types fat on fat.id=fa.type_id where fa.code=new.asset_code and fat.name=new.asset_type),
+		(select id from fin_storages where name=new.storage)
+	)
+	on conflict do nothing;
+	
+	insert into fin_transactions(date, asset_storage_id, amount, category_id, reason_fin_asset_storage_id, reason_phys_asset_id)
+	values(
+		coalesce(new.date, date('now')),
+		(
+			select
+				fas.id
+			from
+				fin_assets_storages fas
+				join fin_assets fa on fa.id=fas.asset_id
+				join fin_asset_types fat on fat.id=fa.type_id
+				join fin_storages fs on fs.id=fas.storage_id
+			where
+				fa.code = new.asset_code and
+				fat.name = new.asset_type and
+				fs.name = new.storage
+		),
+		new.amount,
+		(select id from fin_transaction_categories where name=new.category),
+		(
+			select
+				fas.id
+			from
+				fin_assets_storages fas
+				join fin_assets fa on fa.id=fas.asset_id
+				join fin_asset_types fat on fat.id=fa.type_id
+				join fin_storages fs on fs.id=fas.storage_id
+			where
+				fa.code = new.reason_fin_asset_code and
+				fat.name = new.reason_fin_asset_type and
+				fs.name = new.reason_fin_asset_storage
+		),
+		(select id from phys_assets where name=new.reason_phys_asset)
+	);
+	
+	select
+		case
+			when coalesce(new.date, date('now'))!=date('now') and new.adjust_balance=1 
+			then raise(abort, 'adjust_balance works only with current date')
+		end;
+	
+	insert into balances(asset_storage_id, date, amount)
+	values(
+		(
+				select
+					fas.id as asset_storage_id
+				from
+					fin_assets_storages fas
+					join fin_assets fa on fa.id=fas.asset_id
+					join fin_asset_types fat on fat.id=fa.type_id
+					join fin_storages fs on fs.id=fas.storage_id
+				where
+					fa.code = new.asset_code and
+					fat.name = new.asset_type and
+					fs.name = new.storage
+		),
+		date('now'),
+		coalesce((
+				select
+					(select b.amount from balances b where b.asset_storage_id=fas.id and b.date<=date('now') order by b.date desc limit 1) as last_balance
+				from
+					fin_assets_storages fas
+					join fin_assets fa on fa.id=fas.asset_id
+					join fin_asset_types fat on fat.id=fa.type_id
+					join fin_storages fs on fs.id=fas.storage_id
+				where
+					fa.code = new.asset_code and
+					fat.name = new.asset_type and
+					fs.name = new.storage
+		),0) + new.amount
+	)
+	on conflict(asset_storage_id, date) do update
+	set 
+		amount = amount + new.amount
+	where
+		new.adjust_balance=1;
+end;
+CREATE TRIGGER latest_fin_transactions_update
+instead of update of date, asset_type, storage, amount, asset_code, category, reason_phys_asset, reason_fin_asset_type, reason_fin_asset_code, reason_fin_asset_storage on latest_fin_transactions
+begin
+
+	insert into fin_assets_storages(asset_id, storage_id)
+	values(
+		(select fa.id from fin_assets fa join fin_asset_types fat on fat.id=fa.type_id where fa.code=new.asset_code and fat.name=new.asset_type),
+		(select id from fin_storages where name=new.storage)
+	)
+	on conflict do nothing;
+	
+	update 
+		fin_transactions
+	set
+		date = new.date,
+		asset_storage_id = (
+				select
+					fas.id
+				from
+					fin_assets_storages fas
+					join fin_assets fa on fa.id=fas.asset_id
+					join fin_asset_types fat on fat.id=fa.type_id
+					join fin_storages fs on fs.id=fas.storage_id
+				where
+					fa.code = new.asset_code and
+					fat.name = new.asset_type and
+					fs.name = new.storage
+			),
+		amount = new.amount,
+		category_id = (select id from fin_transaction_categories where name=new.category),
+		reason_fin_asset_storage_id = (
+				select
+					fas.id
+				from
+					fin_assets_storages fas
+					join fin_assets fa on fa.id=fas.asset_id
+					join fin_asset_types fat on fat.id=fa.type_id
+					join fin_storages fs on fs.id=fas.storage_id
+				where
+					fa.code = new.reason_fin_asset_code and
+					fat.name = new.reason_fin_asset_type and
+					fs.name = new.reason_fin_asset_storage
+			),
+		reason_phys_asset_id = (select id from phys_assets where name=new.reason_phys_asset)
+	where
+		id=new.pseudo_id;
+	
+	select
+		case
+			when (new.date!=date('now') or old.date!=date('now')) and new.adjust_balance=1 
+			then raise(abort, 'adjust_balance works only with current date')
+		end;
+	
+	insert into balances(asset_storage_id, date, amount)
+	values(
+		(
+				select
+					fas.id as asset_storage_id
+				from
+					fin_assets_storages fas
+					join fin_assets fa on fa.id=fas.asset_id
+					join fin_asset_types fat on fat.id=fa.type_id
+					join fin_storages fs on fs.id=fas.storage_id
+				where
+					fa.code = new.asset_code and
+					fat.name = new.asset_type and
+					fs.name = new.storage
+		),
+		date('now'),
+		coalesce((
+				select
+					(select b.amount from balances b where b.asset_storage_id=fas.id and b.date<=date('now') order by b.date desc limit 1) as last_balance
+				from
+					fin_assets_storages fas
+					join fin_assets fa on fa.id=fas.asset_id
+					join fin_asset_types fat on fat.id=fa.type_id
+					join fin_storages fs on fs.id=fas.storage_id
+				where
+					fa.code = new.asset_code and
+					fat.name = new.asset_type and
+					fs.name = new.storage
+		),0) + new.amount - old.amount
+	)
+	on conflict(asset_storage_id, date) do update
+	set 
+		amount = amount + new.amount - old.amount
+	where
+		new.adjust_balance=1;
+end;

@@ -77,7 +77,15 @@ rate = [asset_id value] / [base asset from fin_assets value] at [date]
 
 ### current_fin_asset_rates (editable view)
 
-Shows current exchange rates. If you edit something, a new rate will be saved with a `date` of the current day.
+Shows current exchange rates. Inactive assets are skipped. If you modify something, a new rate will be saved with a `date` of the current day.
+
+> edit operations: update, insert
+
+```
+{asset_type, asset} - lookup tuple
+rate - value
+other columns - ignored
+```
 
 
 ### fin_transactions (table)
@@ -110,13 +118,31 @@ is_initial_import - whether the transaction is an upload of the existing assets 
 
 Income or expense is considered passive if two conditions are met:
 
-1. It occurred because of some ownership
+1. It occurred because of some ownership title of which did not change because of the current transaction.
 2.	* For gains, there are no severe non-monetary losses associated with the transaction reason.
 	* For losses, there are no severe non-monetary gains associated with the transaction reason. 
 
 > For example, paying tax for the property a person lives in is not a passive loss, although paying it for a property that they lend is a passive loss.
 
 > Examples of transaction categories: salary transfer, rent payment, self transfer or exchange, dividends payout. 
+
+
+### latest_fin_transactions (editable view)
+
+Shows the latest transactions.
+
+All fields except for pseudo-id are editable. There is also one special column `adjust_balance` - it allows to auto-update `balances` with the amount of the current transaction. It must be set explicitly during any operation (`insert` or `update`) that you want to affect balances. An error will be thrown if transaction's date is not the current date. **Please be cautious: while this option is convenient, used wrongly it may mess up your balance. Verify balances.**
+
+> edit operations: update, insert
+
+```
+{pseudo_id} - lookup tuple
+amount, date, category, reason_phys_asset - values
+{asset_type, asset_code, storage}, {reason_fin_asset_type, reason_fin_asset_code, reason_fin_asset_storage} - value tuples
+adjust_balance - pseudo-column, if set to true current operation will be auto-reflected in balances. Works only with transactions of the current day
+other columns - ignored
+```
+
 
 ### balances (table)
 
@@ -127,9 +153,17 @@ Stores historical balances.
 
 ### current_balances (editable view)
 
-Shows current exchange rates.
+Shows current financial balances. Inactive assets and storages are skipped.
 
-If you edit `balance`, a supplied one will be saved with a date of the current day. You can also insert a new row - it will insert a record into `fin_assets_astorages` if needed, and upsert balances. For updates and inserts, lookup is performed via the tuple `{asset_type, asset_code, storage}`, and `balance` is used as the value. Other columns are ignored.
+If you edit `balance`, a supplied one will be saved with a date of the current day. Upon the insertion of a new row, a record in `fin_assets_storages` is created if needed and the balance is upserted.
+
+> edit operations: update, insert
+
+```
+{asset_type, asset_code, storage} - lookup tuple
+balance - value
+other columns - ignored
+``` 
 
 
 ### balance_goals (table)
