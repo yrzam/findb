@@ -285,58 +285,6 @@ order by
 	is_accomplished asc,
 	t.priority desc
 /* current_balance_goals(is_accomplished,goal,storage,amount_total,amount_left,deadline) */;
-CREATE VIEW historical_monthly_txs_balances_mismatch as
-with recursive dates(mo_start_date, date) as (
-		values(
-			date('now', 'start of month'),
-			date('now', 'start of month', '+1 month', '-1 day')
-		)
-	union all
-		select
-			date(mo_start_date, '-1 month'),
-			date(mo_start_date, '-1 day')
-		from
-			dates
-		where
-			mo_start_date > (select min(date) from balances) or
-			mo_start_date > (select min(date) from fin_transactions)
-		limit 2*12 -- 2 years
-),
-constants as (
-	select
-		(select min(mo_start_date) from dates) as start_date
-)
-
-select 
-	t.mo_start_date as start_date,
-	t.date as end_date,
-	fs.name as storage,
-	t.balance_delta - t.tx_delta as amount_unaccounted,
-	coalesce(fa.code,fa.name) as asset,
-	t.tx_delta,
-	t.balance_delta
-from (
-		select
-			d.*,
-			fas.asset_id as asset_id,
-			fas.storage_id as storage_id,
-			coalesce((select sum(amount) from fin_transactions ft where ft.asset_storage_id=fas.id and ft.date>=d.mo_start_date and ft.date<=d.date),0) as tx_delta,
-			coalesce((
-				select b.amount from balances b where b.asset_storage_id=fas.id and b.date<=d.date order by b.date desc limit 1
-			),0) - coalesce((
-				select coalesce(b.amount,0) from balances b where b.asset_storage_id=fas.id and b.date<d.mo_start_date order by b.date desc limit 1
-			),0) as balance_delta
-		from
-			dates d
-			cross join fin_assets_storages fas
-	) t
-	join fin_assets fa on fa.id=t.asset_id
-	join fin_storages fs on fs.id=t.storage_id
-where
-	t.tx_delta!=t.balance_delta
-order by
-	t.date desc
-/* historical_monthly_txs_balances_mismatch(start_date,end_date,storage,amount_unaccounted,asset,tx_delta,balance_delta) */;
 CREATE TABLE IF NOT EXISTS "fin_transaction_categories" (
 	"id"	INTEGER NOT NULL,
 	"name"	TEXT NOT NULL UNIQUE,
@@ -758,3 +706,55 @@ begin
 	where
 		new.adjust_balance=1;
 end;
+CREATE VIEW historical_monthly_txs_balances_mismatch as
+with recursive dates(mo_start_date, date) as (
+		values(
+			date('now', 'start of month'),
+			date('now', 'start of month', '+1 month', '-1 day')
+		)
+	union all
+		select
+			date(mo_start_date, '-1 month'),
+			date(mo_start_date, '-1 day')
+		from
+			dates
+		where
+			mo_start_date > (select min(date) from balances) or
+			mo_start_date > (select min(date) from fin_transactions)
+		limit 2*12 -- 2 years
+),
+constants as (
+	select
+		(select min(mo_start_date) from dates) as start_date
+)
+
+select 
+	t.mo_start_date as start_date,
+	t.date as end_date,
+	fs.name as storage,
+	t.balance_delta - t.tx_delta as amount_unaccounted,
+	coalesce(fa.code,fa.name) as asset,
+	t.tx_delta,
+	t.balance_delta
+from (
+		select
+			d.*,
+			fas.asset_id as asset_id,
+			fas.storage_id as storage_id,
+			coalesce((select sum(amount) from fin_transactions ft where ft.asset_storage_id=fas.id and ft.date>=d.mo_start_date and ft.date<=d.date),0) as tx_delta,
+			coalesce((
+				select b.amount from balances b where b.asset_storage_id=fas.id and b.date<=d.date order by b.date desc limit 1
+			),0) - coalesce((
+				select coalesce(b.amount,0) from balances b where b.asset_storage_id=fas.id and b.date<d.mo_start_date order by b.date desc limit 1
+			),0) as balance_delta
+		from
+			dates d
+			cross join fin_assets_storages fas
+	) t
+	join fin_assets fa on fa.id=t.asset_id
+	join fin_storages fs on fs.id=t.storage_id
+where
+	abs(t.tx_delta-t.balance_delta)>pow(10,-9)
+order by
+	t.date desc
+/* historical_monthly_txs_balances_mismatch(start_date,end_date,storage,amount_unaccounted,asset,tx_delta,balance_delta) */;
