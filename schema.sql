@@ -758,3 +758,10 @@ where
 order by
 	t.date desc
 /* historical_monthly_txs_balances_mismatch(start_date,end_date,storage,amount_unaccounted,asset,tx_delta,balance_delta) */;
+CREATE TRIGGER latest_fin_transactions_delete instead of delete on latest_fin_transactions
+begin
+	delete from
+		fin_transactions
+	where
+		id=old.pseudo_id;
+end;
