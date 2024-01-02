@@ -133,7 +133,7 @@ Shows the latest transactions.
 
 All fields except for pseudo-id are editable. There is also one special column `adjust_balance` - it allows to auto-update `balances` with the amount of the current transaction. It must be set explicitly during any operation (`insert` or `update`) that you want to affect balances. An error will be thrown if transaction's date is not the current date. **Please be cautious: while this option is convenient, used wrongly it may mess up your balance. Verify balances.**
 
-> edit operations: update, insert
+> edit operations: update, insert, delete
 
 ```
 {pseudo_id} - lookup tuple
