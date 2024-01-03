@@ -467,7 +467,8 @@ from
 	left join fin_asset_types r_fat on r_fat.id=r_fa.type_id
 	left join fin_storages r_fs on r_fs.id=r_fas.storage_id
 order by
-	ft.date desc;
+	ft.date desc,
+	ft.id desc;
 CREATE TRIGGER current_balances_insert
 instead of insert on current_balances
 begin

@@ -21,6 +21,7 @@ EOF
 
 # test
 TEST_DB_PATH="$DUMP_PATH.test.db"
+rm -f "$TEST_DB_PATH"
 cat "$DUMP_PATH" | sqlite3 "$TEST_DB_PATH"
 echo 'pragma foreign_key_check;' | sqlite3 "$TEST_DB_PATH"
-rm "$TEST_DB_PATH"
+rm -f "$TEST_DB_PATH"
