@@ -413,7 +413,7 @@ select
 	t.mo_start_date as start_date,
 	t.date as end_date,
 	fs.name as storage,
-	t.balance_delta - t.tx_delta as amount_unaccounted,
+	round(t.balance_delta - t.tx_delta,9) as amount_unaccounted,
 	coalesce(fa.code,fa.name) as asset,
 	t.tx_delta,
 	t.balance_delta
@@ -636,42 +636,25 @@ begin
 			when coalesce(new.date, date('now'))!=date('now') and new.adjust_balance=1 
 			then raise(abort, 'adjust_balance works only with current date')
 		end;
-	
-	insert into balances(asset_storage_id, date, amount)
-	values(
-		(
-				select
-					fas.id as asset_storage_id
-				from
-					fin_assets_storages fas
-					join fin_assets fa on fa.id=fas.asset_id
-					join fin_asset_types fat on fat.id=fa.type_id
-					join fin_storages fs on fs.id=fas.storage_id
-				where
-					fa.code = new.asset_code and
-					fat.name = new.asset_type and
-					fs.name = new.storage
-		),
-		date('now'),
-		coalesce((
-				select
-					(select b.amount from balances b where b.asset_storage_id=fas.id and b.date<=date('now') order by b.date desc limit 1) as last_balance
-				from
-					fin_assets_storages fas
-					join fin_assets fa on fa.id=fas.asset_id
-					join fin_asset_types fat on fat.id=fa.type_id
-					join fin_storages fs on fs.id=fas.storage_id
-				where
-					fa.code = new.asset_code and
-					fat.name = new.asset_type and
-					fs.name = new.storage
-		),0) + new.amount
-	)
-	on conflict(asset_storage_id, date) do update
-	set 
-		amount = amount + new.amount
+		
+	insert into balances(date, asset_storage_id, amount)
+	select
+		date('now') as date,
+		fas.id as asset_storage_id,
+		coalesce((select b.amount from balances b where b.asset_storage_id=fas.id and b.date<=date('now') order by b.date desc limit 1),0)+new.amount as amount
+	from
+		fin_assets_storages fas
+		join fin_assets fa on fa.id=fas.asset_id
+		join fin_asset_types fat on fat.id=fa.type_id
+		join fin_storages fs on fs.id=fas.storage_id
 	where
-		new.adjust_balance=1;
+		new.adjust_balance=1 and
+		fa.code = new.asset_code and
+		fat.name = new.asset_type and
+		fs.name = new.storage
+	on conflict(date, asset_storage_id) do update
+	set 
+		amount = amount + new.amount;
 end;
 CREATE TRIGGER latest_fin_transactions_update
 instead of update of date, asset_type, storage, amount, asset_code, category, reason_phys_asset, reason_fin_asset_type, reason_fin_asset_code, reason_fin_asset_storage on latest_fin_transactions
@@ -722,43 +705,26 @@ begin
 	
 	select
 		case
-			when (new.date!=date('now') or old.date!=date('now')) and new.adjust_balance=1 
+			when (coalesce(new.date, date('now'))!=date('now') or old.date!=date('now')) and new.adjust_balance=1 
 			then raise(abort, 'adjust_balance works only with current date')
 		end;
 	
-	insert into balances(asset_storage_id, date, amount)
-	values(
-		(
-				select
-					fas.id as asset_storage_id
-				from
-					fin_assets_storages fas
-					join fin_assets fa on fa.id=fas.asset_id
-					join fin_asset_types fat on fat.id=fa.type_id
-					join fin_storages fs on fs.id=fas.storage_id
-				where
-					fa.code = new.asset_code and
-					fat.name = new.asset_type and
-					fs.name = new.storage
-		),
-		date('now'),
-		coalesce((
-				select
-					(select b.amount from balances b where b.asset_storage_id=fas.id and b.date<=date('now') order by b.date desc limit 1) as last_balance
-				from
-					fin_assets_storages fas
-					join fin_assets fa on fa.id=fas.asset_id
-					join fin_asset_types fat on fat.id=fa.type_id
-					join fin_storages fs on fs.id=fas.storage_id
-				where
-					fa.code = new.asset_code and
-					fat.name = new.asset_type and
-					fs.name = new.storage
-		),0) + new.amount - old.amount
-	)
-	on conflict(asset_storage_id, date) do update
-	set 
-		amount = amount + new.amount - old.amount
+	insert into balances(date, asset_storage_id, amount)
+	select
+		date('now') as date,
+		fas.id as asset_storage_id,
+		coalesce((select b.amount from balances b where b.asset_storage_id=fas.id and b.date<=date('now') order by b.date desc limit 1),0)+new.amount as amount
+	from
+		fin_assets_storages fas
+		join fin_assets fa on fa.id=fas.asset_id
+		join fin_asset_types fat on fat.id=fa.type_id
+		join fin_storages fs on fs.id=fas.storage_id
 	where
-		new.adjust_balance=1;
+		new.adjust_balance=1 and
+		fa.code = new.asset_code and
+		fat.name = new.asset_type and
+		fs.name = new.storage
+	on conflict(date, asset_storage_id) do update
+	set 
+		amount = amount + new.amount;
 end;
