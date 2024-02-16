@@ -43,12 +43,13 @@ CREATE TABLE "fin_assets" (
 	"id"	INTEGER NOT NULL,
 	"code"	TEXT NOT NULL,
 	"name"	TEXT,
+	"description"	TEXT,
 	"type_id"	INTEGER NOT NULL,
 	"is_base"	INTEGER NOT NULL DEFAULT 0,
 	"is_active"	INTEGER NOT NULL DEFAULT 1,
 	UNIQUE("type_id","code"),
-	PRIMARY KEY("id"),
-	FOREIGN KEY("type_id") REFERENCES "fin_asset_types"("id")
+	FOREIGN KEY("type_id") REFERENCES "fin_asset_types"("id"),
+	PRIMARY KEY("id")
 );
 CREATE TABLE "fin_assets_storages" (
 	"id"	INTEGER NOT NULL,
@@ -65,39 +66,45 @@ CREATE TABLE "fin_assets_storages" (
 CREATE TABLE "fin_storages" (
 	"id"	INTEGER NOT NULL,
 	"name"	TEXT NOT NULL UNIQUE,
+	"description"	TEXT,
 	"is_active"	INTEGER NOT NULL DEFAULT 1,
 	PRIMARY KEY("id")
 );
 CREATE TABLE "fin_transaction_categories" (
 	"id"	INTEGER NOT NULL,
 	"name"	TEXT NOT NULL UNIQUE,
-	"is_rebalance"	INTEGER NOT NULL DEFAULT 0,
 	"is_passive"	INTEGER NOT NULL DEFAULT 0,
+	"is_rebalance"	INTEGER NOT NULL DEFAULT 0,
 	"is_initial_import"	INTEGER NOT NULL DEFAULT 0,
+	"parent_id"	INTEGER,
+	"min_view_depth"	INTEGER NOT NULL DEFAULT 0,
+	FOREIGN KEY("parent_id") REFERENCES "fin_transaction_categories"("id"),
 	PRIMARY KEY("id")
 );
 CREATE TABLE "fin_transactions" (
 	"id"	INTEGER NOT NULL,
 	"date"	NUMERIC NOT NULL,
+	"description"	TEXT,
 	"asset_storage_id"	INTEGER NOT NULL,
 	"amount"	NUMERIC NOT NULL,
 	"category_id"	INTEGER NOT NULL,
 	"reason_fin_asset_storage_id"	INTEGER,
 	"reason_phys_asset_id"	INTEGER,
-	FOREIGN KEY("reason_fin_asset_storage_id") REFERENCES "fin_assets_storages"("id"),
-	FOREIGN KEY("category_id") REFERENCES "fin_transaction_categories"("id"),
 	PRIMARY KEY("id"),
-	FOREIGN KEY("reason_phys_asset_id") REFERENCES "phys_assets"("id")
+	FOREIGN KEY("reason_phys_asset_id") REFERENCES "phys_assets"("id"),
+	FOREIGN KEY("reason_fin_asset_storage_id") REFERENCES "fin_assets_storages"("id"),
+	FOREIGN KEY("category_id") REFERENCES "fin_transaction_categories"("id")
 );
 CREATE TABLE "phys_assets" (
 	"id"	INTEGER NOT NULL,
 	"name"	TEXT NOT NULL UNIQUE,
+	"description"	TEXT,
 	"buy_transaction_id"	INTEGER,
 	"sell_transaction_id"	INTEGER,
 	"is_expired"	INTEGER NOT NULL DEFAULT 0,
-	FOREIGN KEY("buy_transaction_id") REFERENCES "fin_transactions"("id"),
 	FOREIGN KEY("sell_transaction_id") REFERENCES "fin_transactions"("id"),
-	PRIMARY KEY("id")
+	PRIMARY KEY("id"),
+	FOREIGN KEY("buy_transaction_id") REFERENCES "fin_transactions"("id")
 );
 CREATE INDEX "i_balance_goals_asset_storage_id" ON "balance_goals" (
 	"asset_storage_id"
@@ -204,15 +211,15 @@ from (
 			(select b.amount from balances b where b.asset_storage_id=fas.id order by b.date desc limit 1)*
 			(select far.rate from fin_asset_rates far where far.asset_id=fa.id order by far.date desc limit 1),
 		2) as base_balance,
-		(select code from fin_assets fa2 where fa2.is_base=1 limit 1) as base_asset
+		(select code from fin_assets fa2 where fa2.is_base limit 1) as base_asset
 	from
 		fin_assets_storages fas
 		join fin_assets fa on fa.id=fas.asset_id
 		join fin_asset_types fat on fat.id=fa.type_id
 		join fin_storages fs on fs.id=fas.storage_id
 	where
-		fa.is_active=1 and
-		fs.is_active=1
+		fa.is_active and
+		fs.is_active
 	order by
 		fas.priority desc
 ) t
@@ -222,7 +229,7 @@ CREATE VIEW current_fin_allocation as
 select 
 	t.name as "group",
 	round(t.base_balance,2) as base_balance,
-	(select code from fin_assets fa2 where fa2.is_base=1 limit 1) as base_asset,
+	(select code from fin_assets fa2 where fa2.is_base limit 1) as base_asset,
 	(round(t.current_share, 1) || '%') as current_share,
 	(round(t.target_share, 1)  || '%') as target_share
 from (
@@ -252,7 +259,7 @@ from (
 					left join fin_storages fs on fs.id=fas.storage_id
 				where
 					fas.id is null or 
-					(fa.is_active=1 and fs.is_active=1)
+					(fa.is_active and fs.is_active)
 				group by 
 					fag.id
 			) t
@@ -273,8 +280,8 @@ from (
 			join fin_storages fs on fs.id=fas.storage_id
 		where
 			fas.allocation_group_id is null and
-			fa.is_active=1 and
-			fs.is_active=1
+			fa.is_active and
+			fs.is_active
 ) t
 where
 	t.base_balance!=0 or t.target_share!=0
@@ -286,12 +293,12 @@ select
 	fat.name as asset_type,
 	fa.code as asset,
 	(select rate from fin_asset_rates far where far.asset_id=fa.id order by far.date desc limit 1) as rate,
-	(select fa2.code from fin_assets fa2 where fa2.is_base=1 limit 1) as base_asset
+	(select fa2.code from fin_assets fa2 where fa2.is_base limit 1) as base_asset
 from
 	fin_assets fa
 	join fin_asset_types fat on fat.id=fa.type_id
 where
-	fa.is_active=1;
+	fa.is_active;
 CREATE VIEW historical_monthly_balances as
 with recursive dates(mo_start_date, date) as (
 		values(
@@ -310,7 +317,7 @@ with recursive dates(mo_start_date, date) as (
 ),
 constants as(
 	select
-		(select code from fin_assets fa2 where fa2.is_base=1 limit 1) as base_asset
+		(select code from fin_assets fa2 where fa2.is_base limit 1) as base_asset
 ),
 
 data_by_type as materialized( -- force materialize - 2x faster due to lead()
@@ -332,7 +339,7 @@ select
 	(
 		select
 			coalesce(sum(
-				(select sum(ft.amount) from fin_transactions ft join fin_transaction_categories ftc on ftc.id=ft.category_id where ft.asset_storage_id=fas.id and ft.date>=d.mo_start_date and ft.date<=d.date and ftc.is_rebalance=0 and ftc.is_passive=0 and ftc.is_initial_import=0)*
+				(select sum(ft.amount) from fin_transactions ft join fin_transaction_categories ftc on ftc.id=ft.category_id where ft.asset_storage_id=fas.id and ft.date>=d.mo_start_date and ft.date<=d.date and not ftc.is_rebalance and not ftc.is_passive and not ftc.is_initial_import)*
 				(select far.rate from fin_asset_rates far where far.asset_id=fas.asset_id and far.date<=d.date order by far.date desc limit 1)
 			),0)
 		from
@@ -344,7 +351,7 @@ select
 	(
 		select
 			coalesce(sum(
-				(select sum(ft.amount) from fin_transactions ft join fin_transaction_categories ftc on ftc.id=ft.category_id where ft.asset_storage_id=fas.id and ft.date>=d.mo_start_date and ft.date<=d.date and ftc.is_initial_import=1)*
+				(select sum(ft.amount) from fin_transactions ft join fin_transaction_categories ftc on ftc.id=ft.category_id where ft.asset_storage_id=fas.id and ft.date>=d.mo_start_date and ft.date<=d.date and ftc.is_initial_import)*
 				(select far.rate from fin_asset_rates far where far.asset_id=fas.asset_id and far.date<=d.date order by far.date desc limit 1)
 			),0)
 		from
@@ -579,6 +586,122 @@ begin
 	on conflict(asset_id,date) do update 
 	set rate=new.rate;
 end;
+CREATE TRIGGER fin_transaction_categories_insert insert on fin_transaction_categories
+begin
+with 
+recursive parents(path, parent_id) as (
+	values('/'||new.id||'/', new.parent_id)
+	union all
+	select
+		p.path||cat.id||'/', cat.parent_id
+	from
+		parents p
+		join fin_transaction_categories cat on cat.id=p.parent_id
+	where
+		p.path not like '%/'||cat.id||'/%'
+),
+children(path, id) as (
+	values('/'||new.id||'/', new.id)
+	union all
+	select
+		c.path||cat.id||'/', cat.id
+	from 
+		children c
+		join fin_transaction_categories cat on cat.parent_id=c.id
+	where
+		c.path not like '%/'||cat.id||'/%'
+)
+select
+	case
+		when new.parent_id is not null and not exists(select 1 from fin_transaction_categories where id=new.parent_id)
+			then raise(abort, 'parent does not exist')
+		when new.parent_id is null and exists(select 1 from fin_transaction_categories where parent_id is null and id!=new.id)
+			then raise(abort, 'root of the hierarchy already exists')
+		when not exists(select 1 from parents where parent_id is null)
+			then raise(abort, 'upper part of the hierarchy is circular')
+		when (not new.is_passive and p.has_passive) or (not new.is_rebalance and p.has_rebalance) or (not new.is_initial_import and p.has_initial_import)
+			then raise(abort, 'parent conditions not met')
+		when (new.is_passive and c.has_not_passive) or (new.is_rebalance and c.has_not_rebalance) or (new.is_initial_import and c.has_not_initial_import)
+			then raise(abort, 'child conditions not met')
+	end
+from
+	(
+		select
+			coalesce(max(cat.is_passive),0) as has_passive,
+			coalesce(max(cat.is_rebalance),0) as has_rebalance,
+			coalesce(max(cat.is_initial_import),0) as has_initial_import
+		from
+			parents p
+			join fin_transaction_categories cat on cat.id=p.parent_id
+	) p,
+	(
+		select
+			not coalesce(min(cat.is_passive),1) as has_not_passive,
+			not coalesce(min(cat.is_rebalance),1) as has_not_rebalance,
+			not coalesce(min(cat.is_initial_import),1) as has_not_initial_import
+		from
+			children c
+			join fin_transaction_categories cat on cat.parent_id=c.id
+	) c;
+end;
+CREATE TRIGGER fin_transaction_categories_update update of id,parent_id,is_passive,is_rebalance,is_initial_import on fin_transaction_categories
+begin
+with 
+recursive parents(path, parent_id) as (
+	values('/'||new.id||'/', new.parent_id)
+	union all
+	select
+		p.path||cat.id||'/', cat.parent_id
+	from
+		parents p
+		join fin_transaction_categories cat on cat.id=p.parent_id
+	where
+		p.path not like '%/'||cat.id||'/%'
+),
+children(path, id) as (
+	values('/'||new.id||'/', new.id)
+	union all
+	select
+		c.path||cat.id||'/', cat.id
+	from 
+		children c
+		join fin_transaction_categories cat on cat.parent_id=c.id
+	where
+		c.path not like '%/'||cat.id||'/%'
+)
+select
+	case
+		when new.parent_id is not null and not exists(select 1 from fin_transaction_categories where id=new.parent_id)
+			then raise(abort, 'parent does not exist')
+		when new.parent_id is null and exists(select 1 from fin_transaction_categories where parent_id is null and id!=new.id)
+			then raise(abort, 'root of the hierarchy already exists')
+		when not exists(select 1 from parents where parent_id is null)
+			then raise(abort, 'upper part of the hierarchy is circular')
+		when (not new.is_passive and p.has_passive) or (not new.is_rebalance and p.has_rebalance) or (not new.is_initial_import and p.has_initial_import)
+			then raise(abort, 'parent conditions not met')
+		when (new.is_passive and c.has_not_passive) or (new.is_rebalance and c.has_not_rebalance) or (new.is_initial_import and c.has_not_initial_import)
+			then raise(abort, 'child conditions not met')
+	end
+from
+	(
+		select
+			coalesce(max(cat.is_passive),0) as has_passive,
+			coalesce(max(cat.is_rebalance),0) as has_rebalance,
+			coalesce(max(cat.is_initial_import),0) as has_initial_import
+		from
+			parents p
+			join fin_transaction_categories cat on cat.id=p.parent_id
+	) p,
+	(
+		select
+			not coalesce(min(cat.is_passive),1) as has_not_passive,
+			not coalesce(min(cat.is_rebalance),1) as has_not_rebalance,
+			not coalesce(min(cat.is_initial_import),1) as has_not_initial_import
+		from
+			children c
+			join fin_transaction_categories cat on cat.parent_id=c.id
+	) c;
+end;
 CREATE TRIGGER latest_fin_transactions_delete instead of delete on latest_fin_transactions
 begin
 	delete from
@@ -633,7 +756,7 @@ begin
 	
 	select
 		case
-			when coalesce(new.date, date('now'))!=date('now') and new.adjust_balance=1 
+			when coalesce(new.date, date('now'))!=date('now') and new.adjust_balance
 			then raise(abort, 'adjust_balance works only with current date')
 		end;
 		
@@ -648,7 +771,7 @@ begin
 		join fin_asset_types fat on fat.id=fa.type_id
 		join fin_storages fs on fs.id=fas.storage_id
 	where
-		new.adjust_balance=1 and
+		new.adjust_balance and
 		fa.code = new.asset_code and
 		fat.name = new.asset_type and
 		fs.name = new.storage
@@ -705,7 +828,7 @@ begin
 	
 	select
 		case
-			when (coalesce(new.date, date('now'))!=date('now') or old.date!=date('now')) and new.adjust_balance=1 
+			when (coalesce(new.date, date('now'))!=date('now') or old.date!=date('now')) and new.adjust_balance
 			then raise(abort, 'adjust_balance works only with current date')
 		end;
 	
@@ -720,7 +843,7 @@ begin
 		join fin_asset_types fat on fat.id=fa.type_id
 		join fin_storages fs on fs.id=fas.storage_id
 	where
-		new.adjust_balance=1 and
+		new.adjust_balance and
 		fa.code = new.asset_code and
 		fat.name = new.asset_type and
 		fs.name = new.storage

@@ -109,10 +109,14 @@ reason_phys_asset_id - (optional) physical asset, due to which transaction has o
 
 A **transaction category** describes the logical sense of the transaction.
 
+Transaction categories must form a hierarchy with only one root. If a certain flag (starting with `is_`) is set to true on a category, it must be set to true on all of its child categories. The integrity is ensured via triggers that throw exceptions.
+
 ```
-is_rebalance - whether the transaction is a part of self-transfer / exchange
 is_passive - whether the income or expense is passive (see definition below)
+is_rebalance - whether the transaction is a part of self-transfer / exchange
 is_initial_import - whether the transaction is an upload of the existing assets for accounting (thus it is neither active nor passive income/expense)
+parent_id - reference to a category that is a superset of the current one 
+min_view_depth - in the flattened representation, category shall not appear on a level lower than N, N>=0. Parent category takes multiple levels instead
 ...
 ```
 
@@ -124,7 +128,7 @@ Income or expense is considered passive if two conditions are met:
 
 > For example, paying tax for the property a person lives in is not a passive loss, although paying it for a property that they lend is a passive loss.
 
-> Examples of transaction categories: salary transfer, rent payment, self transfer or exchange, dividends payout. 
+> Examples of transaction categories: expense, salary transfer, rent payment, self transfer or exchange, dividends payout. 
 
 
 ### latest_fin_transactions (editable view)
