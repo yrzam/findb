@@ -22,7 +22,10 @@ CREATE TABLE "balances" (
 CREATE TABLE "fin_allocation_groups" (
 	"id"	INTEGER NOT NULL,
 	"name"	TEXT NOT NULL UNIQUE,
-	"target_share"	NUMERIC NOT NULL DEFAULT 0, priority int,
+	"target_share"	NUMERIC NOT NULL DEFAULT 0,
+	"start_date"	NUMERIC NOT NULL,
+	"end_date"	INTEGER,
+	"priority"	INTEGER UNIQUE,
 	PRIMARY KEY("id")
 );
 CREATE TABLE "fin_asset_rates" (
@@ -89,22 +92,29 @@ CREATE TABLE "fin_transactions" (
 	"amount"	NUMERIC NOT NULL,
 	"category_id"	INTEGER NOT NULL,
 	"reason_fin_asset_storage_id"	INTEGER,
-	"reason_phys_asset_id"	INTEGER,
-	PRIMARY KEY("id"),
-	FOREIGN KEY("reason_phys_asset_id") REFERENCES "phys_assets"("id"),
+	"reason_phys_asset_ownership_id"	INTEGER,
+	FOREIGN KEY("category_id") REFERENCES "fin_transaction_categories"("id"),
 	FOREIGN KEY("reason_fin_asset_storage_id") REFERENCES "fin_assets_storages"("id"),
-	FOREIGN KEY("category_id") REFERENCES "fin_transaction_categories"("id")
+	FOREIGN KEY("reason_phys_asset_ownership_id") REFERENCES "phys_asset_ownerships"("id"),
+	PRIMARY KEY("id")
+);
+CREATE TABLE "phys_asset_ownerships" (
+	"id"	INTEGER NOT NULL,
+	"asset_id"	INTEGER NOT NULL,
+	"start_date"	NUMERIC NOT NULL,
+	"end_date"	NUMERIC,
+	"buy_fin_tx_id"	INTEGER,
+	"sell_fin_tx_id"	INTEGER,
+	FOREIGN KEY("sell_fin_tx_id") REFERENCES "fin_transactions"("id"),
+	FOREIGN KEY("buy_fin_tx_id") REFERENCES "fin_transactions"("id"),
+	FOREIGN KEY("asset_id") REFERENCES "phys_assets"("id"),
+	PRIMARY KEY("id")
 );
 CREATE TABLE "phys_assets" (
 	"id"	INTEGER NOT NULL,
 	"name"	TEXT NOT NULL UNIQUE,
 	"description"	TEXT,
-	"buy_transaction_id"	INTEGER,
-	"sell_transaction_id"	INTEGER,
-	"is_expired"	INTEGER NOT NULL DEFAULT 0,
-	FOREIGN KEY("sell_transaction_id") REFERENCES "fin_transactions"("id"),
-	PRIMARY KEY("id"),
-	FOREIGN KEY("buy_transaction_id") REFERENCES "fin_transactions"("id")
+	PRIMARY KEY("id")
 );
 CREATE INDEX "i_balance_goals_asset_storage_id" ON "balance_goals" (
 	"asset_storage_id"
@@ -115,6 +125,9 @@ CREATE INDEX "i_balance_goals_result_phys_asset_id" ON "balance_goals" (
 CREATE INDEX "i_balances_asset_storage_id_date" ON "balances" (
 	"asset_storage_id",
 	"date"	DESC
+);
+CREATE INDEX "i_fin_allocation_groups_end_date" ON "fin_allocation_groups" (
+	"end_date"	DESC
 );
 CREATE INDEX "i_fin_asset_rates_asset_id_date" ON "fin_asset_rates" (
 	"asset_id",
@@ -135,6 +148,9 @@ CREATE INDEX "i_fin_assets_storages_storage_id" ON "fin_assets_storages" (
 CREATE INDEX "i_fin_assets_type_id" ON "fin_assets" (
 	"type_id"
 );
+CREATE INDEX "i_fin_transaction_categories_parent_id" ON "fin_transaction_categories" (
+	"parent_id"
+);
 CREATE INDEX "i_fin_transactions_asset_storage_id_date" ON "fin_transactions" (
 	"asset_storage_id",
 	"date"	DESC
@@ -145,11 +161,21 @@ CREATE INDEX "i_fin_transactions_category_id" ON "fin_transactions" (
 CREATE INDEX "i_fin_transactions_date" ON "fin_transactions" (
 	"date"	DESC
 );
+CREATE INDEX "i_fin_transactions_reason_phys_asset_ownership_id" ON "fin_transactions" (
+	"reason_phys_asset_ownership_id"
+);
 CREATE INDEX "i_fin_transactions_result_fin_asset_storage_id" ON "fin_transactions" (
 	"reason_fin_asset_storage_id"
 );
-CREATE INDEX "i_fin_transactions_result_phys_asset_id" ON "balance_goals" (
-	"result_transaction_id"
+CREATE INDEX "i_phys_asset_ownerships_asset_id_end_date" ON "phys_asset_ownerships" (
+	"asset_id",
+	"end_date"	DESC
+);
+CREATE INDEX "i_phys_asset_ownerships_buy_fin_tx_id" ON "phys_asset_ownerships" (
+	"buy_fin_tx_id"
+);
+CREATE INDEX "i_phys_asset_ownerships_sell_fin_tx_id" ON "phys_asset_ownerships" (
+	"sell_fin_tx_id"
 );
 CREATE VIEW "current_balance_goals" AS select
 	t.amount_left=0 as is_accomplished,
@@ -258,8 +284,14 @@ from (
 					left join fin_assets fa on fa.id=fas.asset_id
 					left join fin_storages fs on fs.id=fas.storage_id
 				where
-					fas.id is null or 
-					(fa.is_active and fs.is_active)
+					(
+						date('now')>=fag.start_date and
+						(date('now')<=fag.end_date or fag.end_date is null)
+					) and
+					(
+						fas.id is null or 
+						(fa.is_active and fs.is_active)
+					)
 				group by 
 					fag.id
 			) t
@@ -468,7 +500,8 @@ from
 	join fin_asset_types fat on fat.id=fa.type_id
 	join fin_storages fs on fs.id=fas.storage_id
 	
-	left join phys_assets r_pa on r_pa.id=ft.reason_phys_asset_id
+	left join phys_asset_ownerships r_pao on r_pao.id=ft.reason_phys_asset_ownership_id
+	left join phys_assets r_pa on r_pa.id=r_pao.asset_id
 	left join fin_assets_storages r_fas on r_fas.id=ft.reason_fin_asset_storage_id
 	left join fin_assets r_fa on r_fa.id=r_fas.asset_id
 	left join fin_asset_types r_fat on r_fat.id=r_fa.type_id
@@ -588,28 +621,28 @@ begin
 end;
 CREATE TRIGGER fin_transaction_categories_insert insert on fin_transaction_categories
 begin
-with 
-recursive parents(path, parent_id) as (
-	values('/'||new.id||'/', new.parent_id)
-	union all
+with recursive
+parents(parent_id) as (
+	values(new.parent_id)
+	union
 	select
-		p.path||cat.id||'/', cat.parent_id
+		cat.parent_id
 	from
 		parents p
 		join fin_transaction_categories cat on cat.id=p.parent_id
 	where
-		p.path not like '%/'||cat.id||'/%'
+		cat.id!=new.id
 ),
-children(path, id) as (
-	values('/'||new.id||'/', new.id)
-	union all
+children(id) as (
+	values(new.id)
+	union
 	select
-		c.path||cat.id||'/', cat.id
+		cat.id
 	from 
 		children c
 		join fin_transaction_categories cat on cat.parent_id=c.id
 	where
-		c.path not like '%/'||cat.id||'/%'
+		cat.id!=new.id
 )
 select
 	case
@@ -646,28 +679,28 @@ from
 end;
 CREATE TRIGGER fin_transaction_categories_update update of id,parent_id,is_passive,is_rebalance,is_initial_import on fin_transaction_categories
 begin
-with 
-recursive parents(path, parent_id) as (
-	values('/'||new.id||'/', new.parent_id)
-	union all
+with recursive
+parents(parent_id) as (
+	values(new.parent_id)
+	union
 	select
-		p.path||cat.id||'/', cat.parent_id
+		cat.parent_id
 	from
 		parents p
 		join fin_transaction_categories cat on cat.id=p.parent_id
 	where
-		p.path not like '%/'||cat.id||'/%'
+		cat.id!=new.id
 ),
-children(path, id) as (
-	values('/'||new.id||'/', new.id)
-	union all
+children(id) as (
+	values(new.id)
+	union
 	select
-		c.path||cat.id||'/', cat.id
+		cat.id
 	from 
 		children c
 		join fin_transaction_categories cat on cat.parent_id=c.id
 	where
-		c.path not like '%/'||cat.id||'/%'
+		cat.id!=new.id
 )
 select
 	case
@@ -720,7 +753,7 @@ begin
 	)
 	on conflict do nothing;
 	
-	insert into fin_transactions(date, asset_storage_id, amount, category_id, reason_fin_asset_storage_id, reason_phys_asset_id)
+	insert into fin_transactions(date, asset_storage_id, amount, category_id, reason_fin_asset_storage_id, reason_phys_asset_ownership_id)
 	values(
 		coalesce(new.date, date('now')),
 		(
@@ -751,7 +784,19 @@ begin
 				fat.name = new.reason_fin_asset_type and
 				fs.name = new.reason_fin_asset_storage
 		),
-		(select id from phys_assets where name=new.reason_phys_asset)
+		(
+			select
+				pao.id
+			from
+				phys_assets pa
+				join phys_asset_ownerships pao on pao.asset_id=pa.id
+			where
+				pa.name=new.reason_phys_asset and
+				(
+					coalesce(new.date, date('now'))>=pao.start_date and
+					(coalesce(new.date, date('now'))<=pao.end_date or pao.end_date is null)
+				)
+		)
 	);
 	
 	select
@@ -822,7 +867,19 @@ begin
 					fat.name = new.reason_fin_asset_type and
 					fs.name = new.reason_fin_asset_storage
 			),
-		reason_phys_asset_id = (select id from phys_assets where name=new.reason_phys_asset)
+		reason_phys_asset_ownership_id = (
+			select
+				pao.id
+			from
+				phys_assets pa
+				join phys_asset_ownerships pao on pao.asset_id=pa.id
+			where
+				pa.name=new.reason_phys_asset and
+				(
+					coalesce(new.date, date('now'))>=pao.start_date and
+					(coalesce(new.date, date('now'))<=pao.end_date or pao.end_date is null)
+				)
+		)
 	where
 		id=new.pseudo_id;
 	

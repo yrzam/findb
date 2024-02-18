@@ -97,8 +97,8 @@ Exchanges and self-transfers should be represented by two transactions, both hav
 ```
 asset_storage_id - points to storage and asset that took part in in transaction, direction is determined by the sign of [amount] 
 amount - numeric, can be negative
-reason_fin_asset_storage_id - (optional) financial asset, due to which transaction has occurred. This must be not manipulation with the asset itself, but the byproduct of its ownership
-reason_phys_asset_id - (optional) physical asset, due to which transaction has occurred. This must be not manipulation with the asset itself, but the byproduct of its ownership
+reason_fin_asset_storage_id - (optional) indirectly points to the financial asset, due to which transaction has occurred. This must be not manipulation with the asset itself, but the byproduct of its ownership
+reason_phys_asset_ownership_id - (optional) indirectly points to the physical asset, due to which transaction has occurred. This must be not manipulation with the asset itself, but the byproduct of its ownership
 ...
 ```
 
@@ -194,11 +194,23 @@ Goals that result in financial transactions are hidden. Goal is considered accom
 
 ### phys_assets (table)
 
-Represents real-world assets, purchases and other non-fungible (non-interchangeable) things that a person owns. The intended use case is to track large and important assets, especially ones that generate passive gains and losses.
-
-The asset is considered currently owned if it is neither sold (`sell_transaction_id is null`) nor naturally expired (`is_expired=0`).
+Represents real-world assets, purchases and other non-fungible (non-interchangeable) things. The intended use case is to track large and important assets, especially ones that generate passive gains and losses.
 
 > Examples: house, apartment rented for a year, commercial property, car, blockchain NFT
+
+
+### phys_asset_ownerships (table)
+
+Tracks whether physical asset is owned by a person at a particular date. Possibly binds ownership status changes to the financial transactions.
+
+One asset may be owned at many time periods, or not be owned at all. Asset belongs to a person if two conditions are met: `start_date<=[current date]` and `end_date>=[current_date] or end_date is null`.
+
+```
+start_date - first day of ownership
+end_day - (optional) last day of ownership
+buy_fin_tx_id - (optional) transaction id, if redeemed in exchange for financial asset
+sell_fin_tx_id - (optional) transaction id, if sold for financial asset
+```
 
 
 ### fin_allocation_groups (table)
@@ -209,12 +221,12 @@ Each asset & storage (`fin_assets_storages`) from your portfolio can reference a
 
 ```
 target share - a desired fraction of all your assets that the group should take. This may be any non-negative number
+start_date - since that day a rule is appled
+end_date - optional, the last day to be covered by the rule
 ...
 ```
 
-This table is not historical.
-
-> Examples: allocation group "CASH" should have a 5% target share
+> Examples: allocation group "CASH" should have a 5% target share in 2025 Q2
 
 
 ### current_fin_allocation (view)
