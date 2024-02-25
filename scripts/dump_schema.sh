@@ -2,7 +2,24 @@
 
 DB_PATH=$(realpath "$1")
 DUMP_PATH=$(realpath "$2")
-SQL="select sql||';' from sqlite_master where sql is not null order by type='table' desc, type='index' desc, type='view' desc, type='trigger' desc, name;"
+SQL=$( cat <<SQL
+select
+	m.sql||';
+	'
+from
+	sqlite_master m
+	left join sqlite_master ptbl on ptbl.name=m.tbl_name
+where
+	m.sql is not null
+order by
+	m.type='table' desc,
+	m.type='index' desc,
+	m.type='trigger' and ptbl.type is not 'view' desc,
+	m.type='view' desc,
+	m.type='trigger' desc,
+	m.name;
+SQL
+)
 
 read -s -p "Password (if any): " PASS; echo '';
 if [ -z "$PASS" ]; then 
