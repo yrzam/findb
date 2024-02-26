@@ -166,6 +166,55 @@ Whenever possible, balance should be queried directly from this table instead of
 One may argue that storing balances separately is a bad practice because it causes denormalization and data inconsistency. However, it is a deliberate choice to store conflicting data, as such data is loaded from external sources. Purpose of this project is to offer a viewpoint on multiple versions of data in order to resolve these conflicts.
 
 
+### phys_assets (table)
+
+Represents real-world assets, purchases and other non-fungible (non-interchangeable) things. The intended use case is to track large and important assets, especially ones that generate passive gains and losses.
+
+```
+id          (pk)
+name        (text unique not null)
+description (text)
+```
+
+> Examples: house, apartment rented for a year, commercial property, car
+
+
+### phys_asset_ownerships (table)
+
+Tracks whether physical asset is owned by a person at a particular moment. One asset may be owned at many time periods, or not be owned at all.
+
+```
+id             (pk)
+asset_id       (fk phys_asset_id not null)
+start_datetime (datetime as text not null) - since that moment an asset is owned
+end_datetime - (datetime as text) - up to that moment (excl) an asset is owned. Owned indefinitely if null
+```
+
+Ownership periods for the same asset must not intersect.
+
+
+### swaps (table)
+
+Provides double-entry bookkeeping for the operations where both sides are tracked. Swap is an internal transfer of value that may happen between same or different assets, possibly of different nature. Swap changes the value allocation between financial accounts or physical items. 
+
+```
+id                        (pk)
+credit_fin_transaction_id (fk fin_transactions)
+credit_phys_ownership_id  (fk phys_asset_ownerships)
+debit_fin_transaction_id  (fk fin_transactions)
+debit_phys_ownership_id   (fk phys_asset_ownerships)
+```
+
+Therefore, possible operations are:
+- fin asset -> fin asset (exchange or transfer)
+- fin asset -> phys asset (buy)
+- phys asset -> fin_asset (sell)
+- phys asset -> phys asset (exchange)
+- phys asset -> phys asset + fin asset (exchange with change)
+
+> Examples: transfer between bank accounts, currency exchange, buying some item 
+
+
 ### balance_goals (table)
 
 A **balance goal** is a plan to have a certain amount of financial assets on a balance for the specific purpose in the future, or keep it there constantly.
@@ -205,53 +254,29 @@ priority       (integer unique)
 > Examples: allocation group "CASH" should have a 5% target share in 2025 Q2
 
 
-### phys_assets (table)
+### fin_transaction_plans (table)
 
-Represents real-world assets, purchases and other non-fungible (non-interchangeable) things. The intended use case is to track large and important assets, especially ones that generate passive gains and losses.
+This is a core table of financial planning. It allows to specify expected transactions in a flexible way. 
 
-```
-id          (pk)
-name        (text unique not null)
-description (text)
-```
+Transaction plan describes a value delta tied to a specific `transaction category`. Parent category involves child categories, so any subtree of hierarchy may be covered. Plan may be also constrained with a specific `asset & storage`.
 
-> Examples: house, apartment rented for a year, commercial property, car
+Plan may be single-run or recurrent. This is defined by presence of `recurrence_datetime_modifier` which forms the date sequence, possibly ended by `end_datetime`. A `deviation_datetime_modifier` must be set to provide the allowed deviation of the factual datetime from the planned datetime. Plan execution is defined by plan/fact amounts and `criteria_operator` (less, more, etc.).
 
-
-### phys_asset_ownerships (table)
-
-Tracks whether physical asset is owned by a person at a particular moment. One asset may be owned at many time periods, or not be owned at all.
+Balance may be nominated either in the base asset or in the asset of `asset & storage`. For recurrent plans, it is also possible to set the multiplier of amount per each iteration.
 
 ```
-id             (pk)
-asset_id       (fk phys_asset_id not null)
-start_datetime (datetime as text not null) - since that moment an asset is owned
-end_datetime - (datetime as text) - up to that moment (excl) an asset is owned. Owned indefinitely if null
+id                           (pk)
+transaction_category_id      (fk fin_transaction_categories not null) - transaction category that this plan covers. Specify the root category if you want to cover all transactions.
+criteria_operator            (text not null) - comparison operator used between desired amount and planned amount, one of [= > < <= >=]. For negative amounts, standard mathematical rules apply so that "more" operator leads to a greater balance
+start_datetime               (datetime as text not null) - target transaction(s) datetime, for recurrent plan it defines datetime of the first iteration.
+end_datetime                 (datetime as text) - stops the recurrent sequence.
+recurrence_datetime_modifier (semicolon separated datetime modifiers, up to 3, as text) - if set, it is used to make a possibly infinite sequence of datetime values, thus making the plan recurrent. Result must only increase. Last moment is defined by end_datetime if it is set. 
+recurrence_amount_multiplier (real) - for recurrent plans, every subsequent amount will equal previous amount multiplied by this value, aka p=a*mult^N, where N starts with 0. Value of 1 used if not set.
+deviation_datetime_modifier  (reversible positive datetime modifier as text not null) - allowed deviation of transactions' datetime from the plan datetime.  plan datetime += deviation defines a range in which tx delta is calculated.
+asset_storage_id             (fk fin_assets_storages not null) asset storage which target transactions are going to be applied to.
+local_amount                 (real) - amount in the currency of asset storage, allowed if base_amount is not set.
+base_amount					 (real) - amount in the base currency, allowed if local_amount not set.
 ```
-
-Ownership periods for the same asset must not intersect.
-
-
-### swaps (table)
-
-Provides double-entry bookkeeping for the operations where both sides are tracked. Swap is an internal transfer of value that may happen between same or different assets, possibly of different nature. Swap changes the value allocation between financial accounts or physical items. 
-
-```
-id                       (pk)
-credit_fin_tx_id         (fk fin_transactions)
-credit_phys_ownership_id (fk phys_asset_ownerships)
-debit_fin_tx_id          (fk fin_transactions)
-debit_phys_ownership_id  (fk phys_asset_ownerships)
-```
-
-Therefore, possible operations are:
-- fin asset -> fin asset (exchange or transfer)
-- fin asset -> phys asset (buy)
-- phys asset -> fin_asset (sell)
-- phys asset -> phys asset (exchange)
-- phys asset -> phys asset + fin asset (exchange with change)
-
-> Examples: transfer between bank accounts, currency exchange, buying some item 
 
 
 ### current_balances (view)

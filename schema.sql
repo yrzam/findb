@@ -94,6 +94,23 @@ CREATE TABLE "fin_transaction_categories" (
 	FOREIGN KEY("parent_id") REFERENCES "fin_transaction_categories"("id")
 );
 	
+CREATE TABLE "fin_transaction_plans" (
+	"id"	INTEGER NOT NULL,
+	"transaction_category_id"	INTEGER NOT NULL,
+	"criteria_operator"	TEXT NOT NULL CHECK("criteria_operator" IN ('<', '>', '=', '<=', '>=')),
+	"start_datetime"	TEXT NOT NULL CHECK("start_datetime" IS datetime("start_datetime")),
+	"end_datetime"	TEXT CHECK("end_datetime" IS datetime("end_datetime")),
+	"recurrence_datetime_modifier"	TEXT,
+	"recurrence_amount_multiplier"	REAL,
+	"deviation_datetime_modifier"	TEXT NOT NULL,
+	"asset_storage_id"	INTEGER CHECK(NOT ("asset_storage_id" IS null AND "local_amount" IS NOT null)),
+	"local_amount"	REAL CHECK(NOT ("asset_storage_id" IS null AND "local_amount" IS NOT null) AND coalesce("base_amount", "local_amount") IS NOT null AND "base_amount" + "local_amount" IS null),
+	"base_amount"	REAL CHECK(coalesce("base_amount", "local_amount") IS NOT null AND "base_amount" + "local_amount" IS null),
+	FOREIGN KEY("asset_storage_id") REFERENCES "fin_assets_storages"("id"),
+	PRIMARY KEY("id"),
+	FOREIGN KEY("transaction_category_id") REFERENCES "fin_transaction_categories"("id")
+);
+	
 CREATE TABLE "fin_transactions" (
 	"id"	INTEGER NOT NULL,
 	"datetime"	TEXT NOT NULL CHECK("datetime" IS datetime("datetime")),
@@ -126,14 +143,14 @@ CREATE TABLE "phys_assets" (
 );
 	
 CREATE TABLE "swaps" (
-	"credit_fin_tx_id"	INTEGER UNIQUE,
+	"credit_fin_transaction_id"	INTEGER UNIQUE,
 	"credit_phys_ownership_id"	INTEGER UNIQUE,
-	"debit_fin_tx_id"	INTEGER UNIQUE,
+	"debit_fin_transaction_id"	INTEGER UNIQUE,
 	"debit_phys_ownership_id"	INTEGER UNIQUE,
+	FOREIGN KEY("debit_fin_transaction_id") REFERENCES "fin_transactions"("id"),
+	FOREIGN KEY("credit_phys_ownership_id") REFERENCES "phys_asset_ownerships"("id"),
 	FOREIGN KEY("debit_phys_ownership_id") REFERENCES "phys_asset_ownerships"("id"),
-	FOREIGN KEY("credit_fin_tx_id") REFERENCES "fin_transactions"("id"),
-	FOREIGN KEY("debit_fin_tx_id") REFERENCES "fin_transactions"("id"),
-	FOREIGN KEY("credit_phys_ownership_id") REFERENCES "phys_asset_ownerships"("id")
+	FOREIGN KEY("credit_fin_transaction_id") REFERENCES "fin_transactions"("id")
 );
 	
 CREATE INDEX "balance_goals_end_datetime_part_no_result" ON "balance_goals" (
@@ -213,7 +230,7 @@ CREATE INDEX "i_phys_asset_ownerships_asset_id_end_datetime" ON "phys_asset_owne
 );
 	
 CREATE INDEX "i_swaps_credit_fin_tx_id" ON "swaps" (
-	"credit_fin_tx_id"
+	"credit_fin_transaction_id"
 );
 	
 CREATE INDEX "i_swaps_credit_phys_ownership_id" ON "swaps" (
@@ -221,7 +238,7 @@ CREATE INDEX "i_swaps_credit_phys_ownership_id" ON "swaps" (
 );
 	
 CREATE INDEX "i_swaps_debit_fin_tx_id" ON "swaps" (
-	"debit_fin_tx_id"
+	"debit_fin_transaction_id"
 );
 	
 CREATE INDEX "i_swaps_debit_phys_ownership_id" ON "swaps" (
