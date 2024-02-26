@@ -229,7 +229,7 @@ CREATE INDEX "i_phys_asset_ownerships_asset_id_end_datetime" ON "phys_asset_owne
 	"end_datetime"	DESC
 );
 	
-CREATE INDEX "i_swaps_credit_fin_tx_id" ON "swaps" (
+CREATE INDEX "i_swaps_credit_fin_transaction_id" ON "swaps" (
 	"credit_fin_transaction_id"
 );
 	
@@ -237,7 +237,7 @@ CREATE INDEX "i_swaps_credit_phys_ownership_id" ON "swaps" (
 	"credit_phys_ownership_id"
 );
 	
-CREATE INDEX "i_swaps_debit_fin_tx_id" ON "swaps" (
+CREATE INDEX "i_swaps_debit_fin_transaction_id" ON "swaps" (
 	"debit_fin_transaction_id"
 );
 	
