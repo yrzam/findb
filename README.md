@@ -371,7 +371,7 @@ info:
 ```
 
 
-### historical_monthly_balances
+### historical_monthly_balances (view)
 
 Shows monthly changes of balances, both total and detailed by the asset type. It also summarizes transaction data in order to present the following categories:
 
