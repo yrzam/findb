@@ -100,15 +100,15 @@ CREATE TABLE "fin_transaction_plans" (
 	"criteria_operator"	TEXT NOT NULL CHECK("criteria_operator" IN ('<', '>', '=', '<=', '>=')),
 	"start_datetime"	TEXT NOT NULL CHECK("start_datetime" IS datetime("start_datetime")),
 	"end_datetime"	TEXT CHECK("end_datetime" IS datetime("end_datetime")),
-	"recurrence_datetime_modifier"	TEXT,
+	"recurrence_datetime_modifiers"	TEXT,
 	"recurrence_amount_multiplier"	REAL,
 	"deviation_datetime_modifier"	TEXT NOT NULL,
 	"asset_storage_id"	INTEGER CHECK(NOT ("asset_storage_id" IS null AND "local_amount" IS NOT null)),
 	"local_amount"	REAL CHECK(NOT ("asset_storage_id" IS null AND "local_amount" IS NOT null) AND coalesce("base_amount", "local_amount") IS NOT null AND "base_amount" + "local_amount" IS null),
 	"base_amount"	REAL CHECK(coalesce("base_amount", "local_amount") IS NOT null AND "base_amount" + "local_amount" IS null),
-	FOREIGN KEY("asset_storage_id") REFERENCES "fin_assets_storages"("id"),
 	PRIMARY KEY("id"),
-	FOREIGN KEY("transaction_category_id") REFERENCES "fin_transaction_categories"("id")
+	FOREIGN KEY("transaction_category_id") REFERENCES "fin_transaction_categories"("id"),
+	FOREIGN KEY("asset_storage_id") REFERENCES "fin_assets_storages"("id")
 );
 	
 CREATE TABLE "fin_transactions" (
@@ -143,23 +143,25 @@ CREATE TABLE "phys_assets" (
 );
 	
 CREATE TABLE "swaps" (
+	"id"	INTEGER NOT NULL,
 	"credit_fin_transaction_id"	INTEGER UNIQUE,
 	"credit_phys_ownership_id"	INTEGER UNIQUE,
 	"debit_fin_transaction_id"	INTEGER UNIQUE,
 	"debit_phys_ownership_id"	INTEGER UNIQUE,
-	FOREIGN KEY("debit_fin_transaction_id") REFERENCES "fin_transactions"("id"),
-	FOREIGN KEY("credit_phys_ownership_id") REFERENCES "phys_asset_ownerships"("id"),
 	FOREIGN KEY("debit_phys_ownership_id") REFERENCES "phys_asset_ownerships"("id"),
-	FOREIGN KEY("credit_fin_transaction_id") REFERENCES "fin_transactions"("id")
+	FOREIGN KEY("debit_fin_transaction_id") REFERENCES "fin_transactions"("id"),
+	FOREIGN KEY("credit_fin_transaction_id") REFERENCES "fin_transactions"("id"),
+	FOREIGN KEY("credit_phys_ownership_id") REFERENCES "phys_asset_ownerships"("id"),
+	PRIMARY KEY("id")
 );
-	
-CREATE INDEX "balance_goals_end_datetime_part_no_result" ON "balance_goals" (
-	"end_datetime"	DESC
-) WHERE result_transaction_id is not null;
 	
 CREATE INDEX "i_balance_goals_asset_storage_id" ON "balance_goals" (
 	"asset_storage_id"
 );
+	
+CREATE INDEX "i_balance_goals_end_datetime_part_no_result" ON "balance_goals" (
+	"end_datetime"	DESC
+) WHERE "result_transaction_id" IS NOT null;
 	
 CREATE INDEX "i_balance_goals_result_transaction_id" ON "balance_goals" (
 	"result_transaction_id"
@@ -227,22 +229,6 @@ CREATE INDEX "i_fin_transactions_result_fin_asset_storage_id" ON "fin_transactio
 CREATE INDEX "i_phys_asset_ownerships_asset_id_end_datetime" ON "phys_asset_ownerships" (
 	"asset_id",
 	"end_datetime"	DESC
-);
-	
-CREATE INDEX "i_swaps_credit_fin_transaction_id" ON "swaps" (
-	"credit_fin_transaction_id"
-);
-	
-CREATE INDEX "i_swaps_credit_phys_ownership_id" ON "swaps" (
-	"credit_phys_ownership_id"
-);
-	
-CREATE INDEX "i_swaps_debit_fin_transaction_id" ON "swaps" (
-	"debit_fin_transaction_id"
-);
-	
-CREATE INDEX "i_swaps_debit_phys_ownership_id" ON "swaps" (
-	"debit_phys_ownership_id"
 );
 	
 CREATE TRIGGER fin_transaction_categories_insert after insert on fin_transaction_categories
@@ -383,7 +369,8 @@ from (
 				from 
 					balances b 
 				where 
-					b.asset_storage_id=bg.asset_storage_id
+					b.asset_storage_id=bg.asset_storage_id and
+					b.datetime<=datetime('now')
 				order by
 					b.datetime desc
 				limit 1
@@ -414,11 +401,11 @@ from (
 		fat.name as asset_type,
 		coalesce(fa.code,fa.name) as asset_name,
 		fs.name  as storage,
-		(select b.amount from balances b where b.asset_storage_id=fas.id order by b.datetime desc limit 1) as balance,
+		(select b.amount from balances b where b.asset_storage_id=fas.id and b.datetime<=datetime('now') order by b.datetime desc limit 1) as balance,
 		fa.code as asset_code,
 		round(
-			(select b.amount from balances b where b.asset_storage_id=fas.id order by b.datetime desc limit 1)*
-			(select far.rate from fin_asset_rates far where far.asset_id=fa.id order by far.datetime desc limit 1),
+			(select b.amount from balances b where b.asset_storage_id=fas.id and b.datetime<=datetime('now') order by b.datetime desc limit 1)*
+			(select far.rate from fin_asset_rates far where far.asset_id=fa.id and far.datetime<=datetime('now') order by far.datetime desc limit 1),
 		2) as base_balance,
 		(select code from fin_assets fa2 where fa2.is_base limit 1) as base_asset
 	from
@@ -457,8 +444,8 @@ from (
 					fag.priority,
 					coalesce(
 						sum(
-							(select b.amount from balances b where b.asset_storage_id=fas.id order by b.datetime desc limit 1)*
-							(select far.rate from fin_asset_rates far where far.asset_id=fa.id order by far.datetime desc limit 1)
+							(select b.amount from balances b where b.asset_storage_id=fas.id and b.datetime<=datetime('now') order by b.datetime desc limit 1)*
+							(select far.rate from fin_asset_rates far where far.asset_id=fa.id and far.datetime<=datetime('now') order by far.datetime desc limit 1)
 						),
 					0) as base_balance,
 					fag.target_share * 100 / sum(abs(fag.target_share)) over () as target_share
@@ -483,8 +470,8 @@ from (
 		select
 			'Others' as name,
 			sum(
-				(select b.amount from balances b where b.asset_storage_id=fas.id order by b.datetime desc limit 1)*
-				(select far.rate from fin_asset_rates far where far.asset_id=fa.id order by far.datetime desc limit 1)
+				(select b.amount from balances b where b.asset_storage_id=fas.id and b.datetime<=datetime('now') order by b.datetime desc limit 1)*
+				(select far.rate from fin_asset_rates far where far.asset_id=fa.id and far.datetime<=datetime('now') order by far.datetime desc limit 1)
 			) as base_balance,
 			null as current_share,
 			null as target_share,
@@ -502,14 +489,15 @@ from (
 where
 	t.base_balance!=0 or t.target_share!=0
 order by
-	sort1 desc, priority desc;
+	sort1 desc,
+	priority desc;
 	
 CREATE VIEW "current_fin_asset_rates" as
 select
 	fa.id as pseudo_id,
 	fat.name as asset_type,
 	fa.code as asset,
-	(select rate from fin_asset_rates far where far.asset_id=fa.id order by far.datetime desc limit 1) as rate,
+	(select rate from fin_asset_rates far where far.asset_id=fa.id and far.datetime<=datetime('now') order by far.datetime desc limit 1) as rate,
 	(select fa2.code from fin_assets fa2 where fa2.is_base limit 1) as base_asset
 from
 	fin_assets fa
@@ -517,14 +505,150 @@ from
 where
 	fa.is_active;
 	
+CREATE VIEW historical_monthly_balances as
+with recursive
+datetimes(start_datetime, end_datetime) as materialized (
+	select
+		datetime('now','start of month') as start_datetime,
+		datetime('now','start of month','+1 month','-1 second') as end_datetime
+	union all
+	select
+		datetime(start_datetime,'-1 month') as start_datetime,
+		datetime(start_datetime,'-1 second') as end_datetime
+	from
+		datetimes
+	where
+		start_datetime>=(select min(datetime) from balances)
+	limit 5*12
+),
+constants as(
+	select
+		(select code from fin_assets fa2 where fa2.is_base limit 1) as base_asset
+),
+data_by_asset as materialized (
+	select
+		b.start_datetime,
+		b.end_datetime,
+		b.asset_id,
+		(select far.rate from fin_asset_rates far where far.asset_id=b.asset_id and far.datetime<=b.end_datetime order by far.datetime desc limit 1) as end_asset_rate,
+		b.balance as balance,
+		coalesce(tx.total_delta,0) as tx_total_delta,
+		coalesce(tx.active_delta,0) as tx_active_delta,
+		coalesce(tx.base_excluded_delta,0) as base_tx_excluded_delta
+	from
+		( -- balances by asset
+			select
+				d.start_datetime,
+				d.end_datetime,
+				fas.asset_id,
+				sum(
+					(select b.amount from balances b where b.asset_storage_id=fas.id and b.datetime<=d.end_datetime order by b.datetime desc limit 1)
+				) as balance
+			from
+				datetimes d,
+				fin_assets_storages fas
+			group by
+				1,2,3
+		) b
+		left join ( -- txs by asset
+			select
+				d.start_datetime,
+				d.end_datetime,
+				fas.asset_id,
+				sum(ft.amount) as total_delta,
+				sum(ft.amount) filter(where not ftc.is_passive and not ftc.is_initial_import and s.id is null) as active_delta,
+				(	-- exclude txs:
+					-- 1) initial import
+					coalesce(
+						sum(
+							ft.amount*
+							(select far.rate from fin_asset_rates far where far.asset_id=fas.asset_id and far.datetime<=ft.datetime order by far.datetime desc limit 1)
+						)
+						filter(where ftc.is_initial_import and s.id is null)
+					,0) +
+					-- 2) fin -> fin swap, counted by credit amount
+					coalesce(
+						sum(
+							s_cred_ft.amount*
+							(case when s.credit_fin_transaction_id=ft.id then 1 else -1 end)* -- if transaction is debit, take credit with the opposite sign
+							(select far.rate from fin_asset_rates far where far.asset_id=s_cred_fas.asset_id and far.datetime<=ft.datetime order by far.datetime desc limit 1)
+						)
+						filter(where s.id is not null)
+					,0)
+				) as base_excluded_delta 
+			from
+				datetimes d
+				join fin_transactions ft on ft.datetime>=d.start_datetime and ft.datetime<d.end_datetime -- < !!!
+				join fin_assets_storages fas on fas.id=ft.asset_storage_id
+				join fin_transaction_categories ftc on ftc.id=ft.category_id
+				left join swaps s on (s.credit_fin_transaction_id=ft.id or s.debit_fin_transaction_id=ft.id) and (s.credit_fin_transaction_id is not null and s.debit_fin_transaction_id is not null) -- swap fin -> fin
+				left join fin_transactions s_cred_ft on s_cred_ft.id=s.credit_fin_transaction_id
+				left join fin_assets_storages s_cred_fas on s_cred_fas.id=s_cred_ft.asset_storage_id
+			group by
+				1,2,3
+		) tx on tx.asset_id=b.asset_id and tx.start_datetime=b.start_datetime and tx.end_datetime=b.end_datetime
+	where
+		b.balance is not null
+),
+data_by_asset_type as materialized (
+	select
+		t.start_datetime,
+		t.end_datetime,
+		t.asset_type_id,
+		coalesce(sum(t.balance*t.end_asset_rate),0) as base_balance,
+		coalesce(sum(t.base_balance_delta),0) as base_balance_delta,
+		coalesce(sum(t.tx_active_delta*t.end_asset_rate),0) as base_active_delta,
+		coalesce(sum((t.balance_delta-t.tx_total_delta)*t.end_asset_rate+t.base_tx_excluded_delta),0) as base_unaccounted_delta
+	from
+	(
+		select
+			t.*,
+			t.balance-coalesce(
+				lead(t.balance) over(partition by t.asset_id order by t.end_datetime desc),
+				0
+			) as balance_delta,
+			t.balance*t.end_asset_rate-coalesce(
+				lead(t.balance*t.end_asset_rate) over(partition by t.asset_id order by t.end_datetime desc),
+				0
+			) as base_balance_delta,
+			fa.type_id as asset_type_id
+		from
+			data_by_asset t
+			join fin_assets fa on fa.id=t.asset_id
+	) t
+	group by
+		1,2,3
+)
+select
+	start_datetime,
+	end_datetime,
+	round(sum(t.base_balance),2) as base_balance,
+	round(sum(t.base_balance_delta),2) as base_balance_delta,
+	round(sum(t.base_active_delta),2) as base_active_delta,
+	round(sum(t.base_balance_delta)-sum(t.base_active_delta)-sum(t.base_unaccounted_delta),2) as base_passive_delta,
+	round(sum(t.base_unaccounted_delta),2) as base_unaccounted_delta,
+	(select base_asset from constants) as base_asset,
+	group_concat(fat.name||'='||cast(t.base_balance as integer) || ' ' || (select base_asset from constants), '; ') as base_balance_by_type,
+	group_concat(fat.name||'='||cast(t.base_balance_delta as integer) || ' ' || (select base_asset from constants), '; ') as base_balance_delta_by_type,
+	group_concat(fat.name||'='||cast(t.base_active_delta as integer) || ' ' || (select base_asset from constants), '; ') as base_active_delta_by_type,
+	group_concat(fat.name||'='||cast(t.base_balance_delta-t.base_active_delta-t.base_unaccounted_delta as integer) || ' ' || (select base_asset from constants), '; ') as base_passive_delta_by_type,
+	group_concat(fat.name||'='||cast(t.base_unaccounted_delta as integer) || ' ' || (select base_asset from constants), '; ') as base_unaccounted_delta_by_type
+from
+	data_by_asset_type t
+	join fin_asset_types fat on fat.id=t.asset_type_id
+group by
+	1,2
+order by
+	t.end_datetime desc;
+	
 CREATE VIEW historical_txs_balances_mismatch as select
 	t.start_datetime,
 	t.end_datetime,
 	fs.name as storage,
 	abs(round(t.balance_delta - t.tx_delta,9)) as amount_unaccounted,
 	coalesce(fa.code,fa.name) as asset,
-	t.tx_delta,
-	t.balance_delta
+	round(t.tx_delta,9) as tx_delta,
+	round(t.balance_delta,9) as balance_delta
 from 
 	(
 		select
@@ -540,7 +664,8 @@ from
 					ft.asset_storage_id=t.asset_storage_id and
 					ft.datetime<t.end_datetime and
 					(
-					ft.datetime>=t.start_datetime or t.start_datetime is null
+						ft.datetime>=t.start_datetime or
+						t.start_datetime is null
 					)
 			) as tx_delta
 		from (

@@ -260,7 +260,7 @@ This is a core table of financial planning. It allows to specify expected transa
 
 Transaction plan describes a value delta tied to a specific `transaction category`. Parent category involves child categories, so any subtree of hierarchy may be covered. Plan may be also constrained with a specific `asset & storage`.
 
-Plan may be single-run or recurrent. This is defined by presence of `recurrence_datetime_modifier` which forms the date sequence, possibly ended by `end_datetime`. A `deviation_datetime_modifier` must be set to provide the allowed deviation of the factual datetime from the planned datetime. Plan execution is defined by plan/fact amounts and `criteria_operator` (less, more, etc.).
+Plan may be single-run or recurrent. This is defined by presence of `recurrence_datetime_modifiers` which forms the date sequence, possibly ended by `end_datetime`. A `deviation_datetime_modifier` must be set to provide the allowed deviation of the factual datetime from the planned datetime. Plan execution is defined by plan/fact amounts and `criteria_operator` (less, more, etc.).
 
 Balance may be nominated either in the base asset or in the asset of `asset & storage`. For recurrent plans, it is also possible to set the multiplier of amount per each iteration.
 
@@ -270,12 +270,12 @@ transaction_category_id      (fk fin_transaction_categories not null) - transact
 criteria_operator            (text not null) - comparison operator used between desired amount and planned amount, one of [= > < <= >=]. For negative amounts, standard mathematical rules apply so that "more" operator leads to a greater balance
 start_datetime               (datetime as text not null) - target transaction(s) datetime, for recurrent plan it defines datetime of the first iteration.
 end_datetime                 (datetime as text) - stops the recurrent sequence.
-recurrence_datetime_modifier (semicolon separated datetime modifiers, up to 3, as text) - if set, it is used to make a possibly infinite sequence of datetime values, thus making the plan recurrent. Result must only increase. Last moment is defined by end_datetime if it is set. 
+recurrence_datetime_modifiers (semicolon separated datetime modifiers, up to 3, as text) - if set, it is used to make a possibly infinite sequence of datetime values, thus making the plan recurrent. Result must only increase. Last moment is defined by end_datetime if it is set. 
 recurrence_amount_multiplier (real) - for recurrent plans, every subsequent amount will equal previous amount multiplied by this value, aka p=a*mult^N, where N starts with 0. Value of 1 used if not set.
 deviation_datetime_modifier  (reversible positive datetime modifier as text not null) - allowed deviation of transactions' datetime from the plan datetime.  plan datetime += deviation defines a range in which tx delta is calculated.
 asset_storage_id             (fk fin_assets_storages not null) asset storage which target transactions are going to be applied to.
 local_amount                 (real) - amount in the currency of asset storage, allowed if base_amount is not set.
-base_amount					 (real) - amount in the base currency, allowed if local_amount not set.
+base_amount                  (real) - amount in the base currency, allowed if local_amount not set.
 ```
 
 
@@ -369,6 +369,40 @@ info:
     pseudo_id
 	base_asset
 ```
+
+
+### historical_monthly_balances
+
+Shows monthly changes of balances, both total and detailed by the asset type. It also summarizes transaction data in order to present the following categories:
+
+* balance delta - change of the balance since the previous month
+* active delta - change caused by active profits and losses (transactions)
+* passive delta - changes caused by passive profits and losses (transactions) and by fluctuations of the exchange rates
+* unaccounted delta - changes:
+	* not reflected in transactions
+	* caused by initial import of assets
+	* caused by the swap of one financial asset to another. In that case, amount is calculated based on the credit transaction amount for both source and destination and then converted to the base asset. Thus, total amount always equals zero, although for cross-type conversions it will equal the same amount with the opposite sign. Spread losses are counted as passive losses.
+
+> operations: select
+
+```
+info:
+	start_datetime
+	end_datetime
+	base_balance - total balance
+	base_balance_delta - total balance change since prev month
+	base_active_delta
+	base_passive_delta
+	base_unaccounted_delta
+	base_asset
+	base_balance_by_type
+	base_balance_delta_by_type
+	base_active_delta_by_type
+	base_passive_delta_by_type
+	base_unaccounted_delta_by_type
+```
+
+For the most accurate results, `balances` and `fin_asset_rates` should be up-to-date right before the month ends. Note that transaction datetimes must be less then datetime of the balance snapshot. For exchange transactions, `fin_asset_rates` should be up-to-date for the asset which was sent at a datetime of sending transaction (otherwise the most recent rate at that time will be used). 
 
 
 ### current_balance_goals (view)
