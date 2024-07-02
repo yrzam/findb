@@ -123,13 +123,13 @@ You may group transactions into batches if it is impossible to log them all.
 
 A **transaction category** describes the logical sense of the transaction.
 
-Transaction categories must form a hierarchy with only one root. If a certain flag (starting with `is_`) is set to true on a category, it must be set to true on all of its child categories. The integrity is ensured via triggers that throw exceptions.
+Transaction categories must form a hierarchy with only one root. If a certain flag (starting with `is_`) is set on a category, it must be set to the same value on all of its child categories. The integrity is ensured via triggers that throw exceptions.
 
 ```
 id                (pk)
 name              (text unique not null)
-is_passive        (boolean as integer not null) - see below
-is_initial_import (boolean as integer not null) - whether the transaction is an upload of the existing assets for accounting
+is_passive        (boolean as integer) - see below
+is_initial_import (boolean as integer) - whether the transaction is an upload of the existing assets for accounting
 parent_id         (fk fin_transaction_categories) - reference to a category that is a superset of the current one 
 min_view_depth    (integer not null) - in the flattened representation, category shall not appear on a level lower than N, N>=0. Parent category takes multiple levels instead
 ```

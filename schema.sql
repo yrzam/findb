@@ -86,8 +86,8 @@ CREATE TABLE "fin_storages" (
 CREATE TABLE "fin_transaction_categories" (
 	"id"	INTEGER NOT NULL,
 	"name"	TEXT NOT NULL UNIQUE,
-	"is_passive"	INTEGER NOT NULL DEFAULT 0 CHECK(is_passive+is_initial_import<=1),
-	"is_initial_import"	INTEGER NOT NULL DEFAULT 0 CHECK(is_passive+is_initial_import<=1),
+	"is_passive"	INTEGER CHECK(is_passive is null or is_initial_import is null),
+	"is_initial_import"	INTEGER CHECK(is_passive is null or is_initial_import is null),
 	"parent_id"	INTEGER,
 	"min_view_depth"	INTEGER NOT NULL DEFAULT 0,
 	PRIMARY KEY("id"),
@@ -244,17 +244,6 @@ parents(parent_id) as (
 		join fin_transaction_categories cat on cat.id=p.parent_id
 	where
 		cat.id!=new.id
-),
-children(id) as (
-	values(new.id)
-	union
-	select
-		cat.id
-	from 
-		children c
-		join fin_transaction_categories cat on cat.parent_id=c.id
-	where
-		cat.id!=new.id
 )
 select
 	case
@@ -262,28 +251,33 @@ select
 			then raise(abort, 'root of the hierarchy already exists')
 		when not exists(select 1 from parents where parent_id is null)
 			then raise(abort, 'upper part of the hierarchy is circular')
-		when (not new.is_passive and p.has_passive) or (not new.is_initial_import and p.has_initial_import)
+		when exists(
+			select
+				1
+			from
+				fin_transaction_categories p
+			where
+				p.id=new.parent_id and
+				(
+					not (p.is_passive is null or p.is_passive is new.is_passive) or
+					not (p.is_initial_import is null or p.is_initial_import is new.is_initial_import)
+				)
+			)
 			then raise(abort, 'parent conditions not met')
-		when (new.is_passive and c.has_not_passive) or (new.is_initial_import and c.has_not_initial_import)
+		when exists(
+			select
+				1
+			from
+				fin_transaction_categories c
+			where
+				c.parent_id=new.id and
+				(
+					not(new.is_passive is null or new.is_passive is c.is_passive) or
+					not(new.is_initial_import is null or new.is_initial_import=c.is_initial_import)
+				)
+			)
 			then raise(abort, 'child conditions not met')
-	end
-from
-	(
-		select
-			coalesce(max(cat.is_passive),0) as has_passive,
-			coalesce(max(cat.is_initial_import),0) as has_initial_import
-		from
-			parents p
-			join fin_transaction_categories cat on cat.id=p.parent_id
-	) p,
-	(
-		select
-			not coalesce(min(cat.is_passive),1) as has_not_passive,
-			not coalesce(min(cat.is_initial_import),1) as has_not_initial_import
-		from
-			children c
-			join fin_transaction_categories cat on cat.parent_id=c.id
-	) c;
+	end;
 end;
 	
 CREATE TRIGGER fin_transaction_categories_update after update of id,parent_id,is_passive,is_initial_import on fin_transaction_categories
@@ -299,17 +293,6 @@ parents(parent_id) as (
 		join fin_transaction_categories cat on cat.id=p.parent_id
 	where
 		cat.id!=new.id
-),
-children(id) as (
-	values(new.id)
-	union
-	select
-		cat.id
-	from 
-		children c
-		join fin_transaction_categories cat on cat.parent_id=c.id
-	where
-		cat.id!=new.id
 )
 select
 	case
@@ -317,28 +300,33 @@ select
 			then raise(abort, 'root of the hierarchy already exists')
 		when not exists(select 1 from parents where parent_id is null)
 			then raise(abort, 'upper part of the hierarchy is circular')
-		when (not new.is_passive and p.has_passive) or (not new.is_initial_import and p.has_initial_import)
+		when exists(
+			select
+				1
+			from
+				fin_transaction_categories p
+			where
+				p.id=new.parent_id and
+				(
+					not (p.is_passive is null or p.is_passive is new.is_passive) or
+					not (p.is_initial_import is null or p.is_initial_import is new.is_initial_import)
+				)
+			)
 			then raise(abort, 'parent conditions not met')
-		when (new.is_passive and c.has_not_passive) or (new.is_initial_import and c.has_not_initial_import)
+		when exists(
+			select
+				1
+			from
+				fin_transaction_categories c
+			where
+				c.parent_id=new.id and
+				(
+					not(new.is_passive is null or new.is_passive is c.is_passive) or
+					not(new.is_initial_import is null or new.is_initial_import=c.is_initial_import)
+				)
+			)
 			then raise(abort, 'child conditions not met')
-	end
-from
-	(
-		select
-			coalesce(max(cat.is_passive),0) as has_passive,
-			coalesce(max(cat.is_initial_import),0) as has_initial_import
-		from
-			parents p
-			join fin_transaction_categories cat on cat.id=p.parent_id
-	) p,
-	(
-		select
-			not coalesce(min(cat.is_passive),1) as has_not_passive,
-			not coalesce(min(cat.is_initial_import),1) as has_not_initial_import
-		from
-			children c
-			join fin_transaction_categories cat on cat.parent_id=c.id
-	) c;
+	end;
 end;
 	
 CREATE VIEW "current_balance_goals" AS select
