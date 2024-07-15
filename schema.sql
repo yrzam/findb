@@ -86,12 +86,12 @@ CREATE TABLE "fin_storages" (
 CREATE TABLE "fin_transaction_categories" (
 	"id"	INTEGER NOT NULL,
 	"name"	TEXT NOT NULL UNIQUE,
-	"is_passive"	INTEGER CHECK(is_passive is null or is_initial_import is null),
-	"is_initial_import"	INTEGER CHECK(is_passive is null or is_initial_import is null),
+	"is_passive"	INTEGER CHECK(not (is_passive and is_initial_import)),
+	"is_initial_import"	INTEGER CHECK(not (is_passive and is_initial_import)),
 	"parent_id"	INTEGER,
 	"min_view_depth"	INTEGER NOT NULL DEFAULT 0,
-	PRIMARY KEY("id"),
-	FOREIGN KEY("parent_id") REFERENCES "fin_transaction_categories"("id")
+	FOREIGN KEY("parent_id") REFERENCES "fin_transaction_categories"("id"),
+	PRIMARY KEY("id")
 );
 	
 CREATE TABLE "fin_transaction_plans" (
@@ -273,7 +273,7 @@ select
 				c.parent_id=new.id and
 				(
 					not(new.is_passive is null or new.is_passive is c.is_passive) or
-					not(new.is_initial_import is null or new.is_initial_import=c.is_initial_import)
+					not(new.is_initial_import is null or new.is_initial_import is c.is_initial_import)
 				)
 			)
 			then raise(abort, 'child conditions not met')
@@ -322,14 +322,14 @@ select
 				c.parent_id=new.id and
 				(
 					not(new.is_passive is null or new.is_passive is c.is_passive) or
-					not(new.is_initial_import is null or new.is_initial_import=c.is_initial_import)
+					not(new.is_initial_import is null or new.is_initial_import is c.is_initial_import)
 				)
 			)
 			then raise(abort, 'child conditions not met')
 	end;
 end;
 	
-CREATE VIEW "current_balance_goals" AS select
+CREATE VIEW current_balance_goals AS select
 	t.amount_left=0 as is_accomplished,
 	t.goal,
 	t.storage,
@@ -381,7 +381,7 @@ order by
 	is_accomplished asc,
 	t.priority desc;
 	
-CREATE VIEW "current_balances" AS select
+CREATE VIEW current_balances AS select
 	*
 from (
 	select
@@ -480,7 +480,7 @@ order by
 	sort1 desc,
 	priority desc;
 	
-CREATE VIEW "current_fin_asset_rates" as
+CREATE VIEW current_fin_asset_rates as
 select
 	fa.id as pseudo_id,
 	fat.name as asset_type,
