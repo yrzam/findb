@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 DB_PATH=$(realpath "$1")
 DUMP_PATH=$(realpath "$2")
@@ -21,11 +22,12 @@ order by
 SQL
 )
 
-read -s -p "Password (if any): " PASS; echo '';
-if [ -z "$PASS" ]; then 
+MIME=$(file -b --mime-type "$DB_PATH")
+if [ "$MIME" = "application/vnd.sqlite3" ]; then 
 	BIN_PATH=sqlite3
 else
 	BIN_PATH=sqlcipher
+	read -srp "Password: " PASS; echo '';
 fi
 
 # dump
@@ -39,6 +41,6 @@ EOF
 # test
 TEST_DB_PATH="$DUMP_PATH.test.db"
 rm -f "$TEST_DB_PATH"
-cat "$DUMP_PATH" | sqlite3 "$TEST_DB_PATH"
+sqlite3 "$TEST_DB_PATH" < "$DUMP_PATH"
 echo 'pragma foreign_key_check;' | sqlite3 "$TEST_DB_PATH"
 rm -f "$TEST_DB_PATH"
