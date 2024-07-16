@@ -30,9 +30,9 @@ make_query() {
 	shift 1
 
 	case "$TARGET" in
-    	"tx")
-    	    echo "insert into latest_fin_transactions(amount,asset_type,asset_code,storage,category,datetime)	values($(num_arg "$1"),$(text_arg "$2"),$(text_arg "$3"),$(text_arg "$4"),$(text_arg "$5"),$(text_arg "$6"));";;
-    	"bal")
+		"tx")
+			echo "insert into latest_fin_transactions(amount,asset_type,asset_code,storage,category,datetime)	values($(num_arg "$1"),$(text_arg "$2"),$(text_arg "$3"),$(text_arg "$4"),$(text_arg "$5"),$(text_arg "$6"));";;
+		"bal")
 			echo "insert into current_balances(balance,asset_type,asset_code,storage) 							values($(num_arg "$1"),$(text_arg "$2"),$(text_arg "$3"),$(text_arg "$4"));";;
 		"rate")
 			echo "insert into current_fin_asset_rates(rate,asset_type,asset)									values($(num_arg "$1"),$(text_arg "$2"),$(text_arg "$3"))";;
